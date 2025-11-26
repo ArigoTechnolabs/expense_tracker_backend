@@ -1,0 +1,55 @@
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.db
+*.sqlite3
+*.log
+*.pot
+*.py[cod]
+*$py.class
+
+# Django
+*.log
+*.pot
+*.pyc
+*.pyo
+__pycache__/
+db.sqlite3
+media/
+staticfiles/
+
+# Virtual Environment
+venv/
+env/
+.venv/
+.env/
+expensetrackerenv/
+.env
+# If using pipenv
+Pipfile.lock
+# If using poetry
+poetry.lock
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+
+# Mac OS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Django migrations
+migrations/
+
+# Docker
+*.dockerfile
+docker-compose.override.yml
+.docker/
