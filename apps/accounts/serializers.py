@@ -2,6 +2,8 @@ from rest_framework import serializers
 from django.utils import timezone
 from datetime import timedelta
 import random
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import User
 
@@ -55,7 +57,26 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return user
 
 
-class UserOtpVerifySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ["email", "otp"]
+class UserOtpVerifySerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6)
+
+
+class ResendOtpSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        user = self.user
+
+        # Block login if not verified
+        if not user.is_verified:
+            return {"error": "You must verify your email before logging in."}
+
+        # If verified → generate tokens manually
+        refresh = RefreshToken.for_user(user)
+        return {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+        }
