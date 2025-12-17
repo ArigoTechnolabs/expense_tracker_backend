@@ -1,14 +1,31 @@
 from rest_framework import serializers
-from django.utils import timezone
-from datetime import timedelta
-import random
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework_simplejwt.tokens import RefreshToken
-
 from apps.accounts.models import User
+from django.utils import timezone
+from django.contrib.auth.hashers import check_password
+from apps.accounts.models import TempUserRegistration as PendingUser
 
 
-class UserRegistrationSerializer(serializers.ModelSerializer):
+class RegisterRequestOtpSerializer(serializers.Serializer):
+    """
+    Serializer for requesting OTP during registration.
+    """
+
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already registered.")
+        return value
+
+
+class RegisterCompleteSerializer(serializers.ModelSerializer):
+    """
+    Serializer for registering full serializer.
+    """
+
+    otp = serializers.CharField(max_length=6, write_only=True)
+    email = serializers.EmailField()
+
     class Meta:
         model = User
         fields = [
@@ -19,64 +36,74 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             "phone_number",
             "address",
             "terms_conditions_accepted",
+            "otp",
         ]
-        extra_kwargs = {"password": {"write_only": True}}
+        extra_kwargs = {
+            "password": {"write_only": True},
+            "first_name": {"required": True},
+            "last_name": {"required": True},
+        }
+
+    def validate_terms_conditions_accepted(self, value):
+        if not value:
+            raise serializers.ValidationError("You must accept terms and conditions.")
+        return value
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already registered.")
+        return value
+
+    def validate_phone_number(self, value):
+        if User.objects.filter(phone_number=value).exists():
+            raise serializers.ValidationError("Phone number already in use.")
+        return value
+
+    def validate(self, attrs):
+        email = attrs.get("email")
+        otp = attrs.get("otp")
+
+        try:
+            pending = PendingUser.objects.get(email=email)
+        except PendingUser.DoesNotExist:
+            raise serializers.ValidationError(
+                {"email": "Pending registration not found for this email."}
+            )
+
+        if pending.expires_at < timezone.now():
+            pending.delete()
+            raise serializers.ValidationError(
+                {"otp": "OTP expired. Please request a new one."}
+            )
+
+        if not check_password(otp, pending.otp_hash):
+            raise serializers.ValidationError({"otp": "Invalid OTP."})
+
+        self._pending = pending
+        return attrs
 
     def create(self, validated_data):
-        email = validated_data["email"]
-        raw_password = validated_data.pop("password")
+        """
+        Create the actual user and delete the pending temp record.
+        """
+        email = validated_data.pop("email")
+        password = validated_data.pop("password")
 
-        # Generate OTP ONCE
-        otp = str(random.randint(100000, 999999))
-        expiry = timezone.now() + timedelta(minutes=5)
+        if User.objects.filter(email=email).exists():
+            if hasattr(self, "_pending"):
+                self._pending.delete()
+            raise serializers.ValidationError(
+                "User already registered with this email."
+            )
 
-        user = User.objects.filter(email=email).first()
+        user = User.objects.create_user(
+            email=email,
+            password=password,
+            **validated_data,
+            is_verified=True,
+        )
 
-        # If user exists AND verified → block
-        if user and user.is_verified:
-            raise serializers.ValidationError("User already registered and verified.")
+        if hasattr(self, "_pending"):
+            self._pending.delete()
 
-        # If user exists but unverified → update only user info + KEEP OTP flow
-        if user:
-            for key, value in validated_data.items():
-                setattr(user, key, value)
-
-            user.set_password(raw_password)
-            user.otp = otp
-            user.expires_at = expiry
-            user.save()
-            return user
-
-        # NEW USER
-        validated_data["otp"] = otp
-        validated_data["expires_at"] = expiry
-
-        user = User(**validated_data)
-        user.set_password(raw_password)
-        user.save()
         return user
-
-
-class UserOtpVerifySerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    otp = serializers.CharField(max_length=6)
-
-
-class ResendOtpSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-
-
-class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
-    def validate(self, attrs):
-        user = self.user
-
-        # Block login if not verified
-        if not user.is_verified:
-            return {"error": "You must verify your email before logging in."}
-
-        # If verified → generate tokens manually
-        refresh = RefreshToken.for_user(user)
-        return {
-            "refresh": str(refresh),
-            "access": str(refresh.access_token),
-        }

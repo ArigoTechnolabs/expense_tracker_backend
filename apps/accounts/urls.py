@@ -1,14 +1,11 @@
 from django.urls import path
-from apps.accounts.views import (
-    MyTokenObtainPairView,
-    RegisterEmailView,
-    ResendOtpView,
-    VerifyOtpView,
-)
+from apps.accounts import views
 
 urlpatterns = [
-    path("register/", RegisterEmailView.as_view(), name="register-email"),
-    path("verify-otp/", VerifyOtpView.as_view(), name="verify-otp"),
-    path("resend-otp/", ResendOtpView.as_view(), name="resend-otp"),
-    path("login/", MyTokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("register/", views.RegisterCompleteView.as_view(), name="register"),
+    path(
+        "register/otp/",
+        views.RegisterRequestOtpView.as_view(),
+        name="register-request-otp",
+    ),
 ]
