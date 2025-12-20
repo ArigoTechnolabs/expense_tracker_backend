@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.contrib.auth.hashers import make_password
 from rest_framework.generics import CreateAPIView
 from apps.common.utils import first_error_message, success_response, error_response
-from apps.accounts.models import TempUserRegistration as PendingUser
+from apps.accounts.models import TempUserRegistration as PendingUser, User
 from apps.accounts.serializers import (
     MyTokenObtainPairSerializer,
     RegisterRequestOtpSerializer,
@@ -28,6 +28,15 @@ class RegisterRequestOtpView(CreateAPIView):
 
         email = serializer.validated_data["email"]
         req_type = serializer.validated_data["type"]
+
+        # If login type and user is already registered, don't send OTP
+        # User should login with email and password directly
+        if req_type == "login":
+            user_exists = User.objects.filter(email=email).exists()
+            if user_exists:
+                return error_response(
+                    "User is already registered. Please login with your email and password."
+                )
 
         pending = PendingUser.objects.filter(email=email).first()
 
