@@ -8,4 +8,5 @@ urlpatterns = [
         views.RegisterRequestOtpView.as_view(),
         name="register-request-otp",
     ),
+    path("login/", views.MyTokenObtainPairView.as_view(), name="token_obtain_pair"),
 ]

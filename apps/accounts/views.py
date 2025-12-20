@@ -1,5 +1,6 @@
 from datetime import timedelta
 import random
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password
@@ -7,20 +8,15 @@ from rest_framework.generics import CreateAPIView
 from apps.common.utils import first_error_message, success_response, error_response
 from apps.accounts.models import TempUserRegistration as PendingUser
 from apps.accounts.serializers import (
+    MyTokenObtainPairSerializer,
     RegisterRequestOtpSerializer,
     RegisterCompleteSerializer,
+    UserResponseSerializer,
 )
 from apps.accounts.utils import send_otp_email
 
 
 class RegisterRequestOtpView(CreateAPIView):
-    """
-    - If email not yet registered:
-        - If a PendingUser exists and its OTP not expired -> error (OTP still valid)
-        - Else create/update PendingUser with new hashed OTP & expiry
-        - Send OTP email
-    """
-
     serializer_class = RegisterRequestOtpSerializer
 
     def create(self, request, *args, **kwargs):
@@ -31,6 +27,7 @@ class RegisterRequestOtpView(CreateAPIView):
             return error_response(message=msg)
 
         email = serializer.validated_data["email"]
+        req_type = serializer.validated_data["type"]
 
         pending = PendingUser.objects.filter(email=email).first()
 
@@ -50,7 +47,9 @@ class RegisterRequestOtpView(CreateAPIView):
         if not email_sent:
             return error_response("Failed to send OTP email.")
 
-        return success_response("OTP sent successfully. Please check your email.")
+        return success_response(
+            f"OTP sent successfully for {req_type}. Please check your email."
+        )
 
 
 class RegisterCompleteView(CreateAPIView):
@@ -76,14 +75,31 @@ class RegisterCompleteView(CreateAPIView):
             return error_response(message=msg)
 
         user = serializer.save()
-
-        user_data = {
-            "id": user.id,
-            "email": user.email,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "phone_number": str(user.phone_number),
-            "is_verified": user.is_verified,
-        }
+        user_data = UserResponseSerializer(user).data
 
         return success_response("Registration successful.", data=user_data)
+
+
+class MyTokenObtainPairView(CreateAPIView):
+    serializer_class = MyTokenObtainPairSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+
+        if not serializer.is_valid():
+            msg = first_error_message(serializer.errors)
+            return error_response(message=msg)
+
+        user = serializer.validated_data["user"]
+        refresh = RefreshToken.for_user(user)
+
+        response_data = {
+            "user": UserResponseSerializer(user).data,
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        }
+
+        return success_response(
+            message="Token obtained successfully.",
+            data=response_data,
+        )

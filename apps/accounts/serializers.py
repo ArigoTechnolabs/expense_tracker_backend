@@ -3,19 +3,51 @@ from apps.accounts.models import User
 from django.utils import timezone
 from django.contrib.auth.hashers import check_password
 from apps.accounts.models import TempUserRegistration as PendingUser
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+
+class UserResponseSerializer(serializers.ModelSerializer):
+    phone_number = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "phone_number",
+            "is_verified",
+        )
+
+    def get_phone_number(self, obj):
+        return str(obj.phone_number) if obj.phone_number else None
 
 
 class RegisterRequestOtpSerializer(serializers.Serializer):
-    """
-    Serializer for requesting OTP during registration.
-    """
+    TYPE_CHOICES = (
+        ("register", "Register"),
+        ("login", "Login"),
+    )
 
     email = serializers.EmailField()
+    type = serializers.ChoiceField(choices=TYPE_CHOICES)
 
-    def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Email already registered.")
-        return value
+    def validate(self, attrs):
+        email = attrs["email"]
+        req_type = attrs["type"]
+
+        user_exists = User.objects.filter(email=email).exists()
+
+        if req_type == "register" and user_exists:
+            raise serializers.ValidationError({"email": "Email is already registered."})
+
+        if req_type == "login" and not user_exists:
+            raise serializers.ValidationError(
+                {"email": "Email does not exist. Please register with this email."}
+            )
+
+        return attrs
 
 
 class RegisterCompleteSerializer(serializers.ModelSerializer):
@@ -66,9 +98,7 @@ class RegisterCompleteSerializer(serializers.ModelSerializer):
         try:
             pending = PendingUser.objects.get(email=email)
         except PendingUser.DoesNotExist:
-            raise serializers.ValidationError(
-                {"email": "Pending registration not found for this email."}
-            )
+            raise serializers.ValidationError({"email": "OTP not sent!"})
 
         if pending.expires_at < timezone.now():
             pending.delete()
@@ -107,3 +137,18 @@ class RegisterCompleteSerializer(serializers.ModelSerializer):
             self._pending.delete()
 
         return user
+
+
+class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        # ✅ THIS LINE IS MANDATORY
+        data = super().validate(attrs)
+
+        user = self.user  # now it exists
+
+        if not user.is_verified:
+            raise serializers.ValidationError(
+                "You must verify your email before logging in."
+            )
+        data["user"] = user
+        return data
