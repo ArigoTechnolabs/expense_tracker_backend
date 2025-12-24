@@ -16,9 +16,14 @@ from apps.accounts.serializers import (
     UserResponseSerializer,
 )
 from apps.accounts.utils import send_otp_email
+from apps.common import messages
 
 
 class RegisterRequestOtpView(CreateAPIView):
+    """
+    Request an OTP for registration or login.
+    """
+
     serializer_class = RegisterRequestOtpSerializer
 
     def create(self, request, *args, **kwargs):
@@ -36,14 +41,12 @@ class RegisterRequestOtpView(CreateAPIView):
         if req_type == "login":
             user_exists = User.objects.filter(email=email).exists()
             if user_exists:
-                return error_response(
-                    "User is already registered. Please login with your email and password."
-                )
+                return error_response(messages.USER_ALREADY_REGISTERED)
 
         pending = PendingUser.objects.filter(email=email).first()
 
         if pending and pending.expires_at > timezone.now():
-            return error_response("OTP is still valid. Please wait until it expires.")
+            return error_response(messages.OTP_STILL_VALID)
 
         otp = str(random.randint(100000, 999999))
 
@@ -56,7 +59,7 @@ class RegisterRequestOtpView(CreateAPIView):
 
         email_sent = send_otp_email(email, otp)
         if not email_sent:
-            return error_response("Failed to send OTP email.")
+            return error_response(messages.FAILED_TO_SEND_OTP_EMAIL)
 
         return success_response(
             f"OTP sent successfully for {req_type}. Please check your email."
@@ -88,10 +91,14 @@ class RegisterCompleteView(CreateAPIView):
         user = serializer.save()
         user_data = UserResponseSerializer(user).data
 
-        return success_response("Registration successful.", data=user_data)
+        return success_response(messages.REGISTRATION_SUCCESSFUL, data=user_data)
 
 
 class MyTokenObtainPairView(CreateAPIView):
+    """
+    Login view to obtain JWT tokens.
+    """
+
     serializer_class = MyTokenObtainPairSerializer
 
     def create(self, request, *args, **kwargs):
@@ -111,12 +118,16 @@ class MyTokenObtainPairView(CreateAPIView):
         }
 
         return success_response(
-            message="Token obtained successfully.",
+            message=messages.TOKEN_OBTAINED_SUCCESSFULLY,
             data=response_data,
         )
 
 
 class ForgotPasswordRequestOtpView(CreateAPIView):
+    """
+    Forgot password - request OTP view.
+    """
+
     serializer_class = ForgotPasswordRequestOtpSerializer
 
     def create(self, request, *args, **kwargs):
@@ -129,7 +140,7 @@ class ForgotPasswordRequestOtpView(CreateAPIView):
 
         pending = PendingUser.objects.filter(email=email).first()
         if pending and pending.expires_at > timezone.now():
-            return error_response("OTP is still valid. Please wait until it expires.")
+            return error_response(messages.OTP_STILL_VALID)
 
         otp = str(random.randint(100000, 999999))
 
@@ -141,14 +152,16 @@ class ForgotPasswordRequestOtpView(CreateAPIView):
         pending.save()
 
         if not send_otp_email(email, otp):
-            return error_response("Failed to send OTP email.")
+            return error_response(messages.FAILED_TO_SEND_OTP_EMAIL)
 
-        return success_response(
-            "OTP sent successfully for password reset. Please check your email."
-        )
+        return success_response(messages.OTP_SENT_SUCCESSFULLY)
 
 
 class ResetPasswordView(CreateAPIView):
+    """
+    Reset Password view.
+    """
+
     serializer_class = ResetPasswordSerializer
 
     def create(self, request, *args, **kwargs):
@@ -167,6 +180,4 @@ class ResetPasswordView(CreateAPIView):
         if hasattr(serializer, "_pending"):
             serializer._pending.delete()
 
-        return success_response(
-            "Password reset successful. Please login with your new password."
-        )
+        return success_response(messages.PASSWORD_RESET_SUCCESSFUL)

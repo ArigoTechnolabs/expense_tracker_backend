@@ -5,8 +5,15 @@ from django.contrib.auth.hashers import check_password
 from apps.accounts.models import TempUserRegistration as PendingUser
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+from apps.common import messages
+from apps.common.constants import UserType
+
 
 class UserResponseSerializer(serializers.ModelSerializer):
+    """
+    Serializer used for returning user details in API responses.
+    """
+
     phone_number = serializers.SerializerMethodField()
 
     class Meta:
@@ -25,13 +32,12 @@ class UserResponseSerializer(serializers.ModelSerializer):
 
 
 class RegisterRequestOtpSerializer(serializers.Serializer):
-    TYPE_CHOICES = (
-        ("register", "Register"),
-        ("login", "Login"),
-    )
+    """
+    Serializer for requesting an OTP during registration or login.
+    """
 
     email = serializers.EmailField()
-    type = serializers.ChoiceField(choices=TYPE_CHOICES)
+    type = serializers.ChoiceField(choices=UserType.UserTypeChoices)
 
     def validate(self, attrs):
         email = attrs["email"]
@@ -40,11 +46,13 @@ class RegisterRequestOtpSerializer(serializers.Serializer):
         user_exists = User.objects.filter(email=email).exists()
 
         if req_type == "register" and user_exists:
-            raise serializers.ValidationError({"email": "Email is already registered."})
+            raise serializers.ValidationError(
+                {"email": messages.EMAIL_ALREADY_REGISTERED}
+            )
 
         if req_type == "login" and not user_exists:
             raise serializers.ValidationError(
-                {"email": "Email does not exist. Please register with this email."}
+                {"email": messages.EMAIL_DOESNOT_REGISTERED_PLEASE_REGISTER}
             )
 
         return attrs
@@ -52,7 +60,7 @@ class RegisterRequestOtpSerializer(serializers.Serializer):
 
 class RegisterCompleteSerializer(serializers.ModelSerializer):
     """
-    Serializer for registering full serializer.
+    Serializer responsible for completing user registration.
     """
 
     otp = serializers.CharField(max_length=6, write_only=True)
@@ -78,17 +86,17 @@ class RegisterCompleteSerializer(serializers.ModelSerializer):
 
     def validate_terms_conditions_accepted(self, value):
         if not value:
-            raise serializers.ValidationError("You must accept terms and conditions.")
+            raise serializers.ValidationError(messages.ACCEPT_TERMS_CONDITIONS)
         return value
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Email already registered.")
+            raise serializers.ValidationError(messages.EMAIL_ALREADY_REGISTERED)
         return value
 
     def validate_phone_number(self, value):
         if User.objects.filter(phone_number=value).exists():
-            raise serializers.ValidationError("Phone number already in use.")
+            raise serializers.ValidationError(messages.PHONE_NUMBER_ALREADY_IN_USE)
         return value
 
     def validate(self, attrs):
@@ -98,16 +106,14 @@ class RegisterCompleteSerializer(serializers.ModelSerializer):
         try:
             pending = PendingUser.objects.get(email=email)
         except PendingUser.DoesNotExist:
-            raise serializers.ValidationError({"email": "OTP not sent!"})
+            raise serializers.ValidationError({"email": messages.OTP_NOT_SENT})
 
         if pending.expires_at < timezone.now():
             pending.delete()
-            raise serializers.ValidationError(
-                {"otp": "OTP expired. Please request a new one."}
-            )
+            raise serializers.ValidationError({"otp": messages.OTP_EXPIRED})
 
         if not check_password(otp, pending.otp_hash):
-            raise serializers.ValidationError({"otp": "Invalid OTP."})
+            raise serializers.ValidationError({"otp": messages.INVALID_OTP})
 
         self._pending = pending
         return attrs
@@ -122,9 +128,7 @@ class RegisterCompleteSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=email).exists():
             if hasattr(self, "_pending"):
                 self._pending.delete()
-            raise serializers.ValidationError(
-                "User already registered with this email."
-            )
+            raise serializers.ValidationError(messages.USER_ALREADY_REGISTERED)
 
         user = User.objects.create_user(
             email=email,
@@ -140,30 +144,39 @@ class RegisterCompleteSerializer(serializers.ModelSerializer):
 
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Custom JWT token serializer.
+    """
+
     def validate(self, attrs):
-        # ✅ THIS LINE IS MANDATORY
         data = super().validate(attrs)
 
-        user = self.user  # now it exists
+        user = self.user
 
         if not user.is_verified:
-            raise serializers.ValidationError(
-                "You must verify your email before logging in."
-            )
+            raise serializers.ValidationError(messages.VERIFY_YOUR_EMAIL_ADDRESS)
         data["user"] = user
         return data
 
 
 class ForgotPasswordRequestOtpSerializer(serializers.Serializer):
+    """
+    Serializer for initiating the forgot password flow.
+    """
+
     email = serializers.EmailField()
 
     def validate_email(self, value):
         if not User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Email does not exist.")
+            raise serializers.ValidationError(messages.EMAIL_DOESNOT_EXIST)
         return value
 
 
 class ResetPasswordSerializer(serializers.Serializer):
+    """
+    Serializer for resetting a user's password using OTP.
+    """
+
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=6)
     new_password = serializers.CharField(min_length=8)
@@ -175,16 +188,13 @@ class ResetPasswordSerializer(serializers.Serializer):
         try:
             pending = PendingUser.objects.get(email=email)
         except PendingUser.DoesNotExist:
-            raise serializers.ValidationError({"email": "OTP not sent."})
+            raise serializers.ValidationError({"email": messages.OTP_NOT_SENT})
 
         if pending.expires_at < timezone.now():
             pending.delete()
-            raise serializers.ValidationError(
-                {"otp": "OTP expired. Please request a new one."}
-            )
+            raise serializers.ValidationError({"otp": messages.OTP_EXPIRED})
 
         if not check_password(otp, pending.otp_hash):
-            raise serializers.ValidationError({"otp": "Invalid OTP."})
-
+            raise serializers.ValidationError({"otp": messages.INVALID_OTP})
         self._pending = pending
         return attrs
