@@ -152,3 +152,39 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
             )
         data["user"] = user
         return data
+
+
+class ForgotPasswordRequestOtpSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email does not exist.")
+        return value
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6)
+    new_password = serializers.CharField(min_length=8)
+
+    def validate(self, attrs):
+        email = attrs["email"]
+        otp = attrs["otp"]
+
+        try:
+            pending = PendingUser.objects.get(email=email)
+        except PendingUser.DoesNotExist:
+            raise serializers.ValidationError({"email": "OTP not sent."})
+
+        if pending.expires_at < timezone.now():
+            pending.delete()
+            raise serializers.ValidationError(
+                {"otp": "OTP expired. Please request a new one."}
+            )
+
+        if not check_password(otp, pending.otp_hash):
+            raise serializers.ValidationError({"otp": "Invalid OTP."})
+
+        self._pending = pending
+        return attrs

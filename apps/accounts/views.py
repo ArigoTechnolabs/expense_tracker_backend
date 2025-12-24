@@ -8,9 +8,11 @@ from rest_framework.generics import CreateAPIView
 from apps.common.utils import first_error_message, success_response, error_response
 from apps.accounts.models import TempUserRegistration as PendingUser, User
 from apps.accounts.serializers import (
+    ForgotPasswordRequestOtpSerializer,
     MyTokenObtainPairSerializer,
     RegisterRequestOtpSerializer,
     RegisterCompleteSerializer,
+    ResetPasswordSerializer,
     UserResponseSerializer,
 )
 from apps.accounts.utils import send_otp_email
@@ -111,4 +113,60 @@ class MyTokenObtainPairView(CreateAPIView):
         return success_response(
             message="Token obtained successfully.",
             data=response_data,
+        )
+
+
+class ForgotPasswordRequestOtpView(CreateAPIView):
+    serializer_class = ForgotPasswordRequestOtpSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+
+        if not serializer.is_valid():
+            return error_response(first_error_message(serializer.errors))
+
+        email = serializer.validated_data["email"]
+
+        pending = PendingUser.objects.filter(email=email).first()
+        if pending and pending.expires_at > timezone.now():
+            return error_response("OTP is still valid. Please wait until it expires.")
+
+        otp = str(random.randint(100000, 999999))
+
+        if not pending:
+            pending = PendingUser(email=email)
+
+        pending.otp_hash = make_password(otp)
+        pending.expires_at = timezone.now() + timedelta(minutes=5)
+        pending.save()
+
+        if not send_otp_email(email, otp):
+            return error_response("Failed to send OTP email.")
+
+        return success_response(
+            "OTP sent successfully for password reset. Please check your email."
+        )
+
+
+class ResetPasswordView(CreateAPIView):
+    serializer_class = ResetPasswordSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+
+        if not serializer.is_valid():
+            return error_response(first_error_message(serializer.errors))
+
+        email = serializer.validated_data["email"]
+        new_password = serializer.validated_data["new_password"]
+
+        user = User.objects.get(email=email)
+        user.set_password(new_password)
+        user.save()
+
+        if hasattr(serializer, "_pending"):
+            serializer._pending.delete()
+
+        return success_response(
+            "Password reset successful. Please login with your new password."
         )
