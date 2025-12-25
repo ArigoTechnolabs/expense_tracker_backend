@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django_celery_beat",
     "rest_framework",
+    "drf_spectacular",
     "rest_framework_simplejwt",
     "corsheaders",
     "phonenumber_field",
@@ -123,6 +124,7 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 
@@ -168,5 +170,24 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup-expired-temp-users-every-24-hours": {
         "task": "apps.accounts.tasks.cleanup_expired_temp_users",
         "schedule": crontab(hour=0, minute=0),  # EVERY 24 HOURS
+    },
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Accounts API",
+    "DESCRIPTION": "Authentication, Registration, OTP, and Password Reset APIs",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    # JWT Auth in Swagger
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SECURITY": [{"bearerAuth": []}],
+    "COMPONENTS": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+            }
+        }
     },
 }
