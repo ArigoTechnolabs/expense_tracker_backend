@@ -148,6 +148,10 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     Custom JWT token serializer.
     """
 
+    device_token = serializers.CharField(required=False, allow_blank=True)
+    device_type = serializers.CharField(required=False, allow_blank=True)
+    device_version = serializers.CharField(required=False, allow_blank=True)
+
     def validate(self, attrs):
         data = super().validate(attrs)
 
@@ -155,6 +159,21 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         if not user.is_verified:
             raise serializers.ValidationError(messages.VERIFY_YOUR_EMAIL_ADDRESS)
+
+        request = self.context.get("request")
+        if request:
+            user.device_token = request.data.get("device_token")
+            user.device_type = request.data.get("device_type")
+            user.device_version = request.data.get("device_version")
+
+            user.save(
+                update_fields=[
+                    "device_token",
+                    "device_type",
+                    "device_version",
+                ]
+            )
+
         data["user"] = user
         return data
 

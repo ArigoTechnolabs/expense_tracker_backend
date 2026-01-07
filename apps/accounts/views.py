@@ -102,7 +102,9 @@ class MyTokenObtainPairView(CreateAPIView):
     serializer_class = MyTokenObtainPairSerializer
 
     def create(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data)
+        serializer = self.serializer_class(
+            data=request.data, context={"request": request}
+        )
 
         if not serializer.is_valid():
             msg = first_error_message(serializer.errors)
