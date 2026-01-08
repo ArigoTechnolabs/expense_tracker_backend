@@ -89,9 +89,17 @@ class RegisterCompleteView(CreateAPIView):
             return error_response(message=msg)
 
         user = serializer.save()
-        user_data = UserResponseSerializer(user).data
+        refresh = RefreshToken.for_user(user)
 
-        return success_response(messages.REGISTRATION_SUCCESSFUL, data=user_data)
+        response_data = {
+            "user": UserResponseSerializer(user).data,
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        }
+
+        # user_data = UserResponseSerializer(user).data
+
+        return success_response(messages.REGISTRATION_SUCCESSFUL, data=response_data)
 
 
 class MyTokenObtainPairView(CreateAPIView):

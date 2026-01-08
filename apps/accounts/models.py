@@ -44,7 +44,7 @@ class User(AbstractUser, BaseModel):
     device_token = models.CharField(max_length=255, null=True, blank=True)
     device_type = models.CharField(max_length=100, null=True, blank=True)
     device_version = models.CharField(max_length=100, null=True, blank=True)
-
+    app_version = models.CharField(max_length=100, null=True, blank=True)
     # otp fields
     otp = models.CharField(max_length=6, null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
