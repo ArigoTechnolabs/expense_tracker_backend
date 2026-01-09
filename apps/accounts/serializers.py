@@ -66,6 +66,10 @@ class RegisterCompleteSerializer(serializers.ModelSerializer):
     otp = serializers.CharField(max_length=6, write_only=True)
     email = serializers.EmailField()
     app_version = serializers.CharField(required=False, allow_blank=True)
+    device_model = serializers.CharField(required=False, allow_blank=True)
+    device_version = serializers.CharField(required=False, allow_blank=True)
+    device_type = serializers.CharField(required=False, allow_blank=True)
+    device_token = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = User
@@ -79,6 +83,10 @@ class RegisterCompleteSerializer(serializers.ModelSerializer):
             "terms_conditions_accepted",
             "otp",
             "app_version",
+            "device_model",
+            "device_version",
+            "device_type",
+            "device_token",
         ]
         extra_kwargs = {
             "password": {"write_only": True},
@@ -127,6 +135,10 @@ class RegisterCompleteSerializer(serializers.ModelSerializer):
         email = validated_data.pop("email")
         password = validated_data.pop("password")
         app_version = validated_data.pop("app_version", None)
+        device_model = validated_data.pop("device_model", None)
+        device_version = validated_data.pop("device_version", None)
+        device_type = validated_data.pop("device_type", None)
+        device_token = validated_data.pop("device_token", None)
 
         if User.objects.filter(email=email).exists():
             if hasattr(self, "_pending"):
@@ -140,7 +152,19 @@ class RegisterCompleteSerializer(serializers.ModelSerializer):
             is_verified=True,
         )
         user.app_version = app_version
-        user.save(update_fields=["app_version"])
+        user.device_model = device_model
+        user.device_version = device_version
+        user.device_type = device_type
+        user.device_token = device_token
+        user.save(
+            update_fields=[
+                "app_version",
+                "device_model",
+                "device_version",
+                "device_type",
+                "device_token",
+            ]
+        )
 
         if hasattr(self, "_pending"):
             self._pending.delete()
@@ -157,6 +181,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     device_type = serializers.CharField(required=False, allow_blank=True)
     device_version = serializers.CharField(required=False, allow_blank=True)
     app_version = serializers.CharField(required=False, allow_blank=True)
+    device_model = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, attrs):
         data = super().validate(attrs)
@@ -172,6 +197,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
             user.device_type = request.data.get("device_type")
             user.device_version = request.data.get("device_version")
             user.app_version = request.data.get("app_version")
+            user.device_model = request.data.get("device_model")
 
             user.save(
                 update_fields=[
@@ -179,6 +205,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
                     "device_type",
                     "device_version",
                     "app_version",
+                    "device_model",
                 ]
             )
 
