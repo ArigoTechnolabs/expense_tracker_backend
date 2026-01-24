@@ -30,7 +30,13 @@ SECRET_KEY = "django-insecure-*4#@bd@imsilz&=y(u5i5%-ylraqaj@3cktb7=ccsggzr0^n#6
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "arigotechnolabs.com",
+    "www.arigotechnolabs.com",
+    "api.arigotechnolabs.com",
+    "www.api.arigotechnolabs.com",
+    "127.0.0.1",
+]
 
 
 # Application definition
@@ -156,6 +162,12 @@ AUTH_USER_MODEL = "accounts.User"  # Replace 'accounts' with your app name if di
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
 STATIC_URL = "static/"
+
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
