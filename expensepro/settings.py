@@ -14,7 +14,6 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 from datetime import timedelta
-from celery.schedules import crontab
 
 load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -48,7 +47,6 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "django_celery_beat",
     "rest_framework",
     "drf_spectacular",
     "rest_framework_simplejwt",
@@ -173,21 +171,6 @@ STATICFILES_DIRS = [
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-# CELERY CONFIG
-CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
-CELERY_ACCEPT_CONTENT = ["json"]
-CELERY_TASK_SERIALIZER = "json"
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
-CELERY_TIMEZONE = TIME_ZONE
-CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
-
-CELERY_BEAT_SCHEDULE = {
-    "cleanup-expired-temp-users-every-24-hours": {
-        "task": "apps.accounts.tasks.cleanup_expired_temp_users",
-        "schedule": crontab(hour=0, minute=0),  # EVERY 24 HOURS
-    },
-}
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Accounts API",

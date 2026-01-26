@@ -1,14 +1,12 @@
-from django.utils import timezone
-from apps.accounts.models import TempUserRegistration
-from celery import shared_task
+"""
+This module previously hosted Celery tasks.
+
+On shared hosting (no Celery/Redis), the periodic cleanup runs via the Django
+management command: `python manage.py cleanup_expired_temp_users`.
+"""
 
 
-@shared_task
 def cleanup_expired_temp_users():
-    """
-    Delete expired temp user registrations
-    """
-    now = timezone.now()
-    deleted_count, _ = TempUserRegistration.objects.filter(expires_at__lt=now).delete()
-
-    return f"Deleted {deleted_count} expired temp users"
+    raise RuntimeError(
+        "Celery is not configured. Run: python manage.py cleanup_expired_temp_users"
+    )
