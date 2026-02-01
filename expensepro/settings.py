@@ -29,6 +29,32 @@ SECRET_KEY = "django-insecure-*4#@bd@imsilz&=y(u5i5%-ylraqaj@3cktb7=ccsggzr0^n#6
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+from corsheaders.defaults import default_headers  # noqa: E402
+
+CORS_URLS_REGEX = r"^/api/.*$"
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "content-type",
+    "authorization",
+]
+CORS_ALLOW_ALL_ORIGINS = True
+APPEND_SLASH = False
+
+CORS_ALLOW_METHODS = [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+]
+CORS_ALLOW_CREDENTIALS = True
+CSRF_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_SECURE = True
+
+
 ALLOWED_HOSTS = [
     "arigotechnolabs.com",
     "www.arigotechnolabs.com",
@@ -54,9 +80,11 @@ INSTALLED_APPS = [
     "phonenumber_field",
     "apps.common",
     "apps.accounts",
+    "contact",
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",  # ðŸ‘ˆ MUST BE FIRST
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -84,6 +112,20 @@ TEMPLATES = [
     },
 ]
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://arigotechnolabs.com",
+    "https://www.arigotechnolabs.com",
+]
+
+# CORS - allow your Flutter web app origin
+CORS_ALLOWED_ORIGINS = [
+    "https://arigotechnolabs.com",  # main domain
+    "https://www.arigotechnolabs.com",  # if you use www
+    "http://localhost:8080",  # local Flutter web dev
+    "http://localhost:3000",
+    "http://127.0.0.1:8080",
+]
+
 WSGI_APPLICATION = "expensepro.wsgi.application"
 
 
@@ -105,13 +147,19 @@ DATABASES = {
     }
 }
 
-# Email Configuration (SMTP)
+# SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+# SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL")
+# SENDGRID_TEMPLATE_ID_OTP = os.getenv("SENDGRID_TEMPLATE_ID_OTP")
+
+# Email Configuration - SMTP (Gmail)
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")  # App password for Gmail
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "arigo.technolabs@gmail.com")
+EMAIL_HOST_PASSWORD = os.environ.get(
+    "EMAIL_HOST_PASSWORD", "iint buwi tmus qzuq"
+)  # App password for Gmail
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # Password validation
