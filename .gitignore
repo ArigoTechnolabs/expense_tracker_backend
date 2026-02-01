@@ -53,3 +53,8 @@ migrations/__pycache__
 *.dockerfile
 docker-compose.override.yml
 .docker/
+
+# cPanel / Passenger
+passenger_wsgi.py
+tmp/
+
