@@ -230,6 +230,13 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Authentication, Registration, OTP, and Password Reset APIs",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": "/api",
+    "SERVERS": [
+        {
+            "url": "https://arigotechnolabs.com/api",
+            "description": "Production server",
+        }
+    ],
     # JWT Auth in Swagger
     "COMPONENT_SPLIT_REQUEST": True,
     "SECURITY": [{"bearerAuth": []}],
