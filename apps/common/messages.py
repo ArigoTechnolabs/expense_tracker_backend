@@ -22,3 +22,10 @@ OTP_SENT_SUCCESSFULLY = (
 PASSWORD_RESET_SUCCESSFUL = (
     "Password reset successful. Please login with your new password."
 )
+
+
+EXPENSE_CATEGORY_CREATED_SUCCESSFULLY = "Expense category created successfully."
+EXPENSE_CATEGORY_ALREADY_EXISTS = "Expense category already exists."
+EXPENSE_CATEGORY_UPDATED_SUCCESSFULLY = "Expense category updated successfully."
+EXPENSE_CATEGORY_DELETED_SUCCESSFULLY = "Expense category deleted successfully."
+EXPENSE_CATEGORY_ALREADY_EXISTS = "Expense category already exists."
