@@ -80,6 +80,7 @@ INSTALLED_APPS = [
     "phonenumber_field",
     "apps.common",
     "apps.accounts",
+    "apps.category",
     "contact",
 ]
 
