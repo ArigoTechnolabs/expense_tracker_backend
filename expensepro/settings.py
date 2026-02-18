@@ -136,6 +136,10 @@ CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    "https://arigotechnolabs.com",
+    "https://www.arigotechnolabs.com",
+]
 
 CSRF_TRUSTED_ORIGINS = [
     "https://arigotechnolabs.com",
