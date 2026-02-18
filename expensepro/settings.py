@@ -215,7 +215,7 @@ else:
         "SERVE_INCLUDE_SCHEMA": False,
         "SERVERS": [
             {
-                "url": "https://arigotechnolabs.com/api",
+                "url": "https://arigotechnolabs.com",
                 "description": "Production server",
             }
         ],
