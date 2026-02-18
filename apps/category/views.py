@@ -51,7 +51,7 @@ class CategoryCreateView(ListCreateAPIView):
     Create a new category.
     """
 
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     serializer_class = CategoryCreateSerializer
     queryset = Category.objects.all().order_by("id")
 
@@ -96,7 +96,7 @@ class CategoryRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):
     Retrieve, update (name only), or delete a category.
     """
 
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     serializer_class = CategoryCreateSerializer
     queryset = Category.objects.all()
     lookup_field = "id"
@@ -196,7 +196,7 @@ class TransactionRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):
     Retrieve, update, or delete a transaction.
     """
 
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     serializer_class = TransactionSerializer
 
     def get_queryset(self):
@@ -240,7 +240,7 @@ class FinancialSummaryView(APIView):
     Get financial summary for the user.
     """
 
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     serializer_class = FinancialSummarySerializer
 
     def get(self, request):
