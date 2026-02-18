@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = "django-insecure-*4#@bd@imsilz&=y(u5i5%-ylraqaj@3cktb7=ccsggzr0^n#6"
 
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = [
     "127.0.0.1",
@@ -211,11 +211,11 @@ else:
         "TITLE": "Accounts API",
         "DESCRIPTION": "Production API",
         "VERSION": "1.0.0",
-        "SCHEMA_PATH_PREFIX": "/api",
+        "SCHEMA_PATH_PREFIX": "",
         "SERVE_INCLUDE_SCHEMA": False,
         "SERVERS": [
             {
-                "url": "https://arigotechnolabs.com",
+                "url": "https://arigotechnolabs.com/api",
                 "description": "Production server",
             }
         ],
