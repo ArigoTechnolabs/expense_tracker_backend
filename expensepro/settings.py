@@ -115,15 +115,15 @@ AUTH_USER_MODEL = "accounts.User"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.accounts.authentication.CustomJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=365 * 10),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=365 * 20),
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
@@ -183,45 +183,34 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # DRF SPECTACULAR (Swagger)
 # ==================================================
 
-if DEBUG:
-    SPECTACULAR_SETTINGS = {
-        "TITLE": "Accounts API",
-        "DESCRIPTION": "Local Development API",
-        "VERSION": "1.0.0",
-        "SCHEMA_PATH_PREFIX": "/api",
-        "SERVE_INCLUDE_SCHEMA": False,
-        "SERVERS": [
-            {
-                "url": "http://127.0.0.1:8000/",
-                "description": "Local server",
+SPECTACULAR_SETTINGS = {
+    "TITLE": "ExpenseTracker API",
+    "DESCRIPTION": "API documentation for ExpenseTracker with JWT support",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_PATCH": True,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SECURITY": [{"bearerAuth": []}],
+    "COMPONENTS": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
             }
-        ],
-        "SECURITY": [{"bearerAuth": []}],
-        "COMPONENTS": {
-            "securitySchemes": {
-                "bearerAuth": {
-                    "type": "http",
-                    "scheme": "bearer",
-                    "bearerFormat": "JWT",
-                }
-            }
-        },
-    }
-else:
-    SPECTACULAR_SETTINGS = {
-        "TITLE": "Accounts API",
-        "DESCRIPTION": "Production API",
-        "VERSION": "1.0.0",
-        "SCHEMA_PATH_PREFIX": "",
-        "SERVE_INCLUDE_SCHEMA": False,
-        "SERVERS": [
-            {
-                "url": "https://arigotechnolabs.com/api",
-                "description": "Production server",
-            }
-        ],
-        "SECURITY": [{"bearerAuth": []}],
-    }
+        }
+    },
+    "SERVERS": [
+        {"url": "http://127.0.0.1:8000/", "description": "Local server"}
+        if DEBUG
+        else {
+            "url": "https://arigotechnolabs.com/api",
+            "description": "Production server",
+        }
+    ],
+    "SCHEMA_PATH_PREFIX": "/api" if DEBUG else "",
+}
+
 
 # ==================================================
 # INTERNATIONALIZATION

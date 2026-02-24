@@ -183,6 +183,13 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     app_version = serializers.CharField(required=False, allow_blank=True)
     device_model = serializers.CharField(required=False, allow_blank=True)
 
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # Add custom claims
+        token["jwt_key"] = user.jwt_key
+        return token
+
     def validate(self, attrs):
         data = super().validate(attrs)
 
@@ -252,3 +259,28 @@ class ResetPasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError({"otp": messages.INVALID_OTP})
         self._pending = pending
         return attrs
+
+
+class UserUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for updating user profile.
+    """
+
+    class Meta:
+        model = User
+        fields = (
+            "first_name",
+            "last_name",
+            "phone_number",
+            "address",
+        )
+
+    def validate_phone_number(self, value):
+        user = self.instance
+        if (
+            User.objects.filter(phone_number=value)
+            .exclude(id=user.id if user else None)
+            .exists()
+        ):
+            raise serializers.ValidationError(messages.PHONE_NUMBER_ALREADY_IN_USE)
+        return value

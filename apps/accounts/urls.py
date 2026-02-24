@@ -11,4 +11,5 @@ urlpatterns = [
     path("login/", views.MyTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("forgot-password/request-otp/", views.ForgotPasswordRequestOtpView.as_view()),
     path("forgot-password/reset/", views.ResetPasswordView.as_view()),
+    path("profile/", views.UserProfileView.as_view(), name="user-profile"),
 ]

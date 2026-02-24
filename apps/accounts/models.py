@@ -46,9 +46,10 @@ class User(AbstractUser, BaseModel):
     device_version = models.CharField(max_length=100, null=True, blank=True)
     app_version = models.CharField(max_length=100, null=True, blank=True)
     device_model = models.CharField(max_length=100, null=True, blank=True)
-    # otp fields
+    # security fields
     otp = models.CharField(max_length=6, null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
+    jwt_key = models.CharField(max_length=255, null=True, blank=True)
 
     username = None  # Disable username if using email for login
 

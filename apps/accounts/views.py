@@ -5,6 +5,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password
 from rest_framework.generics import CreateAPIView
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 from apps.common.utils import first_error_message, success_response, error_response
 from apps.accounts.models import TempUserRegistration as PendingUser, User
 from apps.accounts.serializers import (
@@ -119,7 +121,15 @@ class MyTokenObtainPairView(CreateAPIView):
             return error_response(message=msg)
 
         user = serializer.validated_data["user"]
+
+        # Rotate JWT Key for single-device login
+        from apps.accounts.authentication import rotate_jwt_key
+
+        rotate_jwt_key(user)
+
         refresh = RefreshToken.for_user(user)
+        # Manually add jwt_key to token claims
+        refresh["jwt_key"] = user.jwt_key
 
         response_data = {
             "user": UserResponseSerializer(user).data,
@@ -130,6 +140,31 @@ class MyTokenObtainPairView(CreateAPIView):
         return success_response(
             message=messages.TOKEN_OBTAINED_SUCCESSFULLY,
             data=response_data,
+        )
+
+
+class UserProfileView(APIView):
+    """
+    Get or update user profile details.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserResponseSerializer(request.user)
+        return success_response(data=serializer.data)
+
+    def patch(self, request):
+        from apps.accounts.serializers import UserUpdateSerializer
+
+        serializer = UserUpdateSerializer(request.user, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return error_response(first_error_message(serializer.errors))
+
+        user = serializer.save()
+        return success_response(
+            message="Profile updated successfully",
+            data=UserResponseSerializer(user).data,
         )
 
 
