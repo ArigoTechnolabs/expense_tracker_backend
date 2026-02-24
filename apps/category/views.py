@@ -168,20 +168,83 @@ class TransactionCreateView(ListCreateAPIView):
         )
 
     def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+        from apps.group.models import GroupTransaction
 
-        # Calculate totals (based on type)
-        total_income = (
-            queryset.filter(type="income").aggregate(total=Sum("amount"))["total"] or 0
+        # Get regular transactions
+        transactions = Transaction.objects.filter(user=self.request.user).order_by(
+            "-date"
         )
-        total_expenses = (
-            queryset.filter(type="expense").aggregate(total=Sum("amount"))["total"] or 0
+        transaction_serializer = TransactionSerializer(transactions, many=True)
+
+        # Get group transactions where owner is the payer
+        group_transactions = GroupTransaction.objects.filter(
+            user=self.request.user, person__isnull=True
+        ).order_by("-date")
+
+        # Prepare combined data
+        combined_data = []
+
+        # Add regular transactions to combined data
+        for item in transaction_serializer.data:
+            item["is_group_transaction"] = False
+            item["group_id"] = None
+            item["group_name"] = None
+            combined_data.append(item)
+
+        # Add group transactions to combined data
+        for gt in group_transactions:
+            combined_data.append(
+                {
+                    "id": gt.id,
+                    "user": gt.user.id,
+                    "type": gt.type,
+                    "category": None,
+                    "category_name": "Group: " + gt.group.name,
+                    "category_type": gt.type,
+                    "amount": str(gt.amount),
+                    "payment_type": gt.payment_type,
+                    "date": gt.date.strftime("%Y-%m-%d"),
+                    "note": gt.note,
+                    "is_group_transaction": True,
+                    "group_id": gt.group.id,
+                    "group_name": gt.group.name,
+                    "created_at": gt.created_at.isoformat(),
+                    "updated_at": gt.updated_at.isoformat(),
+                }
+            )
+
+        # Sort combined data by date (descending)
+        combined_data.sort(key=lambda x: x["date"], reverse=True)
+
+        # Calculate totals from both sources
+        reg_income = (
+            transactions.filter(type="income").aggregate(total=Sum("amount"))["total"]
+            or 0
         )
-        balance = float(total_income) - float(total_expenses)
+        reg_expense = (
+            transactions.filter(type="expense").aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+
+        grp_income = (
+            group_transactions.filter(type="income").aggregate(total=Sum("amount"))[
+                "total"
+            ]
+            or 0
+        )
+        grp_expense = (
+            group_transactions.filter(type="expense").aggregate(total=Sum("amount"))[
+                "total"
+            ]
+            or 0
+        )
+
+        total_income = float(reg_income) + float(grp_income)
+        total_expenses = float(reg_expense) + float(grp_expense)
+        balance = total_income - total_expenses
 
         data = {
-            "transactions": serializer.data,
+            "transactions": combined_data,
             "summary": {
                 "total_income": total_income,
                 "total_expenses": total_expenses,
@@ -245,25 +308,40 @@ class FinancialSummaryView(APIView):
 
     def get(self, request):
         user = request.user
+        from apps.group.models import GroupTransaction
 
-        # Calculate total income
-        total_income = (
+        # Calculate total income from both sources
+        reg_income = (
             Transaction.objects.filter(user=user, category__type="income").aggregate(
                 total=Sum("amount")
             )["total"]
             or 0
         )
+        grp_income = (
+            GroupTransaction.objects.filter(
+                user=user, person__isnull=True, type="income"
+            ).aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+        total_income = float(reg_income) + float(grp_income)
 
-        # Calculate total expenses
-        total_expenses = (
+        # Calculate total expenses from both sources
+        reg_expenses = (
             Transaction.objects.filter(user=user, category__type="expense").aggregate(
                 total=Sum("amount")
             )["total"]
             or 0
         )
+        grp_expenses = (
+            GroupTransaction.objects.filter(
+                user=user, person__isnull=True, type="expense"
+            ).aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+        total_expenses = float(reg_expenses) + float(grp_expenses)
 
         # Calculate balance
-        balance = float(total_income) - float(total_expenses)
+        balance = total_income - total_expenses
 
         data = {
             "total_income": total_income,
