@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = "django-insecure-*4#@bd@imsilz&=y(u5i5%-ylraqaj@3cktb7=ccsggzr0^n#6"
 
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
 ALLOWED_HOSTS = [
     "127.0.0.1",
@@ -201,14 +201,15 @@ SPECTACULAR_SETTINGS = {
         }
     },
     "SERVERS": [
-        {"url": "http://127.0.0.1:8000/", "description": "Local server"}
-        if DEBUG
-        else {
-            "url": "https://arigotechnolabs.com/api",
-            "description": "Production server",
-        }
+        {"url": "http://127.0.0.1:8000/", "description": "Local server"},
+        {"url": "https://arigotechnolabs.com/api", "description": "Production server"},
+    ]
+    if DEBUG
+    else [
+        {"url": "https://arigotechnolabs.com/api", "description": "Production server"},
+        {"url": "http://127.0.0.1:8000/", "description": "Local server"},
     ],
-    "SCHEMA_PATH_PREFIX": "/api" if DEBUG else "",
+    "SCHEMA_PATH_PREFIX": None,
 }
 
 
