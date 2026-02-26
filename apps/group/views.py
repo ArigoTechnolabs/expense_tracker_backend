@@ -35,7 +35,7 @@ class GroupCreateListView(ListCreateAPIView):
 
         return success_response(
             message="Group created successfully",
-            data=GroupCreateSerializer(group).data,
+            data=GroupCreateSerializer(group, context={"request": request}).data,
         )
 
     def list(self, request, *args, **kwargs):
@@ -129,7 +129,7 @@ class GroupRetrieveView(APIView):
                 }
             )
 
-        group_data = GroupCreateSerializer(group).data
+        group_data = GroupCreateSerializer(group, context={"request": request}).data
         group_data["summary"] = {
             "total_income": total_income,
             "total_expenses": total_expenses,
@@ -163,20 +163,37 @@ class PersonCreateListView(ListCreateAPIView):
         except Group.DoesNotExist:
             return error_response(message="Group not found")
 
-        data = request.data.copy()
-        data["group"] = group_id
+        # Support both single object and list of objects
+        is_many = isinstance(request.data, list)
 
-        serializer = self.get_serializer(data=data)
+        if is_many:
+            data = []
+            for item in request.data:
+                if isinstance(item, dict):
+                    item_copy = item.copy()
+                    item_copy["group"] = group_id
+                    data.append(item_copy)
+                else:
+                    return error_response(message="Invalid data format in list")
+        else:
+            data = request.data.copy()
+            data["group"] = group_id
+
+        serializer = self.get_serializer(data=data, many=is_many)
 
         if not serializer.is_valid():
             msg = first_error_message(serializer.errors)
             return error_response(message=msg)
 
-        person = serializer.save()
+        person_or_people = serializer.save()
 
         return success_response(
-            message="Person added to group successfully",
-            data=PersonDetailSerializer(person).data,
+            message=(
+                "People added to group successfully"
+                if is_many
+                else "Person added to group successfully"
+            ),
+            data=PersonDetailSerializer(person_or_people, many=is_many).data,
         )
 
     def list(self, request, *args, **kwargs):

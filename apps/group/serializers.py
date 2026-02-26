@@ -2,14 +2,27 @@ from rest_framework import serializers
 from apps.group.models import Group, Person, GroupTransaction
 
 
+class PersonDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer for retrieving person details.
+    """
+
+    class Meta:
+        model = Person
+        fields = ("id", "group", "name", "email", "phone", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at")
+
+
 class GroupCreateSerializer(serializers.ModelSerializer):
     """
     Serializer for creating and listing groups.
     """
 
+    people = PersonDetailSerializer(many=True, read_only=True)
+
     class Meta:
         model = Group
-        fields = ("id", "name", "photo", "created_at", "updated_at")
+        fields = ("id", "name", "photo", "people", "created_at", "updated_at")
         read_only_fields = ("id", "created_at", "updated_at")
 
     def validate_name(self, value):
@@ -56,17 +69,6 @@ class PersonCreateSerializer(serializers.ModelSerializer):
 
         attrs["phone"] = phone
         return attrs
-
-
-class PersonDetailSerializer(serializers.ModelSerializer):
-    """
-    Serializer for retrieving person details.
-    """
-
-    class Meta:
-        model = Person
-        fields = ("id", "group", "name", "email", "phone", "created_at", "updated_at")
-        read_only_fields = ("id", "created_at", "updated_at")
 
 
 class GroupTransactionSerializer(serializers.ModelSerializer):

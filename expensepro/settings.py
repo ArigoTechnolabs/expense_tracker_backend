@@ -177,6 +177,9 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ==================================================
@@ -210,6 +213,9 @@ SPECTACULAR_SETTINGS = {
         {"url": "http://127.0.0.1:8000/", "description": "Local server"},
     ],
     "SCHEMA_PATH_PREFIX": None,
+    "SWAGGER_UI_SETTINGS": {
+        "persistAuthorization": True,
+    },
 }
 
 
