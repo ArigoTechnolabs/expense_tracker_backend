@@ -77,7 +77,13 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
     """
 
     person_name = serializers.SerializerMethodField()
+    to_person_name = serializers.SerializerMethodField()
     category_name = serializers.ReadOnlyField(source="category.name")
+
+    def get_to_person_name(self, obj):
+        if obj.to_person:
+            return obj.to_person.name
+        return None
 
     def get_person_name(self, obj):
         if obj.person:
@@ -98,6 +104,8 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
             "group",
             "person",
             "person_name",
+            "to_person",
+            "to_person_name",
             "category",
             "category_name",
             "type",
@@ -112,15 +120,67 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         group = attrs.get("group")
-        person = attrs.get("person")
+        person = attrs.get("person")  # From Person
+        to_person = attrs.get("to_person")  # To Person
+        type = attrs.get("type", "expense")
+        amount = attrs.get("amount", 0)
 
-        # Ensure person belongs to the specified group when provided
+        # Ensure person belongs to group
         if person and group and person.group_id != group.id:
-            raise serializers.ValidationError(
-                "Person must belong to the specified group."
+            raise serializers.ValidationError("Person must belong to the group.")
+
+        # Ensure to_person belongs to group
+        if to_person and group and to_person.group_id != group.id:
+            raise serializers.ValidationError("To-Person must belong to the group.")
+
+        # Validation for Income (Settlement)
+        if type == "income":
+            # Allow to_person to be null (represented as Owner/Logged-in User)
+            if person == to_person:
+                sender_label = person.name if person else "The Owner"
+                raise serializers.ValidationError(
+                    f"{sender_label} cannot send a settlement payment to themselves."
+                )
+
+            # Optional: Check if amount exceeds settlement needed
+            # We need current summary for this
+            from apps.group.utils import calculate_group_summary
+            from apps.group.models import GroupTransaction
+
+            transactions = GroupTransaction.objects.filter(group=group)
+            summary = calculate_group_summary(
+                group, transactions, self.context["request"].user
             )
 
-        # It's valid for person to be omitted (meaning user's own transaction)
+            # Find the sender in member_summary
+            sender_name = None
+            if person:
+                sender_name = person.name
+            else:
+                user = self.context["request"].user
+                sender_name = " ".join(filter(None, [user.first_name, user.last_name]))
+                if not sender_name.strip():
+                    sender_name = user.email
+                sender_name += " (Owner)"
+
+            member = next(
+                (m for m in summary["member_summary"] if m["name"] == sender_name), None
+            )
+            if member:
+                net_balance = member.get("net_balance", 0)
+                # If netBalance is negative, they owe money.
+                # Settlement amount shouldn't exceed debt.
+                if net_balance >= -0.01:
+                    raise serializers.ValidationError(
+                        f"{sender_name} does not owe any money to settle."
+                    )
+
+                debt_amount = abs(net_balance)
+                if float(amount) > debt_amount + 0.01:
+                    raise serializers.ValidationError(
+                        f"Amount {amount} exceeds the required settlement of {debt_amount}."
+                    )
+
         return attrs
 
     def create(self, validated_data):

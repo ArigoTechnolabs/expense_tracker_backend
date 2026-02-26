@@ -76,12 +76,18 @@ class GroupTransaction(BaseModel):
         null=True,
         blank=True,
     )
+    to_person = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="received_transactions",
+        null=True,
+        blank=True,
+        help_text="The person receiving the payment (for income/settlement type).",
+    )
     category = models.ForeignKey(
         Category,
         on_delete=models.CASCADE,
         related_name="group_transactions",
-        null=True,
-        blank=True,
     )
     type = models.CharField(max_length=10, choices=TYPE_CHOICES, default="expense")
     amount = models.DecimalField(max_digits=10, decimal_places=2)

@@ -2,7 +2,6 @@ from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIV
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema
-from django.db.models import Sum
 
 from apps.group.models import Group, Person, GroupTransaction
 from apps.group.serializers import (
@@ -12,6 +11,7 @@ from apps.group.serializers import (
     GroupTransactionSerializer,
 )
 from apps.common.utils import first_error_message, success_response, error_response
+from apps.group.utils import calculate_group_summary
 
 
 class GroupCreateListView(ListCreateAPIView):
@@ -62,85 +62,18 @@ class GroupRetrieveView(APIView):
         except Group.DoesNotExist:
             return error_response(message="Group not found")
 
-        # Get summary for the group
+        # Get transactions for the group
+        from apps.group.models import GroupTransaction
+
         transactions = GroupTransaction.objects.filter(group=group)
-        total_income = (
-            transactions.filter(type="income").aggregate(total=Sum("amount"))["total"]
-            or 0
-        )
-        total_expenses = (
-            transactions.filter(type="expense").aggregate(total=Sum("amount"))["total"]
-            or 0
-        )
-        balance = float(total_income) - float(total_expenses)
 
-        # Member breakdown
-        member_summary = []
-
-        # Owner
-        owner_name = " ".join(
-            filter(None, [request.user.first_name, request.user.last_name])
-        )
-        if not owner_name.strip():
-            owner_name = request.user.email
-
-        owner_income = (
-            transactions.filter(person__isnull=True, type="income").aggregate(
-                total=Sum("amount")
-            )["total"]
-            or 0
-        )
-        owner_expense = (
-            transactions.filter(person__isnull=True, type="expense").aggregate(
-                total=Sum("amount")
-            )["total"]
-            or 0
-        )
-
-        member_summary.append(
-            {
-                "id": None,
-                "user_id": request.user.id,
-                "name": owner_name + " (Owner)",
-                "total_income": owner_income,
-                "total_expense": owner_expense,
-                "balance": float(owner_income) - float(owner_expense),
-            }
-        )
-
-        # People
-        people = Person.objects.filter(group=group)
-        for person in people:
-            p_income = (
-                transactions.filter(person=person, type="income").aggregate(
-                    total=Sum("amount")
-                )["total"]
-                or 0
-            )
-            p_expense = (
-                transactions.filter(person=person, type="expense").aggregate(
-                    total=Sum("amount")
-                )["total"]
-                or 0
-            )
-
-            member_summary.append(
-                {
-                    "id": person.id,
-                    "name": person.name,
-                    "total_income": p_income,
-                    "total_expense": p_expense,
-                    "balance": float(p_income) - float(p_expense),
-                }
-            )
+        # Get summary, member breakdown and settlements using utility
+        summary_data = calculate_group_summary(group, transactions, request.user)
 
         group_data = GroupCreateSerializer(group, context={"request": request}).data
-        group_data["summary"] = {
-            "total_income": total_income,
-            "total_expenses": total_expenses,
-            "balance": balance,
-        }
-        group_data["member_summary"] = member_summary
+        group_data.update(summary_data)
+
+        return success_response(data=group_data)
 
         return success_response(data=group_data)
 
@@ -393,84 +326,11 @@ class GroupTransactionCreateListView(ListCreateAPIView):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
 
-        # Calculate group totals
-        total_income = (
-            queryset.filter(type="income").aggregate(total=Sum("amount"))["total"] or 0
-        )
-        total_expenses = (
-            queryset.filter(type="expense").aggregate(total=Sum("amount"))["total"] or 0
-        )
-        balance = float(total_income) - float(total_expenses)
+        # Calculate summary, member breakdown and settlements
+        summary_data = calculate_group_summary(group, queryset, request.user)
 
-        # Calculate per-member breakdown
-        member_summary = []
-
-        # 1. Owner (Logged-in User) breakdown
-        owner_name = " ".join(
-            filter(None, [request.user.first_name, request.user.last_name])
-        )
-        if not owner_name.strip():
-            owner_name = request.user.email
-
-        owner_income = (
-            queryset.filter(person__isnull=True, type="income").aggregate(
-                total=Sum("amount")
-            )["total"]
-            or 0
-        )
-        owner_expense = (
-            queryset.filter(person__isnull=True, type="expense").aggregate(
-                total=Sum("amount")
-            )["total"]
-            or 0
-        )
-
-        member_summary.append(
-            {
-                "id": None,
-                "user_id": request.user.id,
-                "name": owner_name + " (Owner)",
-                "total_income": owner_income,
-                "total_expense": owner_expense,
-                "balance": float(owner_income) - float(owner_expense),
-            }
-        )
-
-        # 2. People breakdown
-        people = Person.objects.filter(group=group)
-        for person in people:
-            p_income = (
-                queryset.filter(person=person, type="income").aggregate(
-                    total=Sum("amount")
-                )["total"]
-                or 0
-            )
-            p_expense = (
-                queryset.filter(person=person, type="expense").aggregate(
-                    total=Sum("amount")
-                )["total"]
-                or 0
-            )
-
-            member_summary.append(
-                {
-                    "id": person.id,
-                    "name": person.name,
-                    "total_income": p_income,
-                    "total_expense": p_expense,
-                    "balance": float(p_income) - float(p_expense),
-                }
-            )
-
-        data = {
-            "transactions": serializer.data,
-            "summary": {
-                "total_income": total_income,
-                "total_expenses": total_expenses,
-                "balance": balance,
-            },
-            "member_summary": member_summary,
-        }
+        data = {"transactions": serializer.data, **summary_data}
+        return success_response(data=data)
         return success_response(data=data)
 
 
