@@ -77,6 +77,7 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
     """
 
     person_name = serializers.SerializerMethodField()
+    category_name = serializers.ReadOnlyField(source="category.name")
 
     def get_person_name(self, obj):
         if obj.person:
@@ -97,6 +98,8 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
             "group",
             "person",
             "person_name",
+            "category",
+            "category_name",
             "type",
             "amount",
             "payment_type",

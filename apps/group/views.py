@@ -1,6 +1,7 @@
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.utils import extend_schema
 from django.db.models import Sum
 
 from apps.group.models import Group, Person, GroupTransaction
@@ -51,6 +52,10 @@ class GroupRetrieveView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        responses={200: GroupCreateSerializer},
+        description="Retrieve a specific group with its summary and member breakdown.",
+    )
     def get(self, request, group_id):
         try:
             group = Group.objects.get(id=group_id, user=request.user)
@@ -139,6 +144,54 @@ class GroupRetrieveView(APIView):
 
         return success_response(data=group_data)
 
+    @extend_schema(
+        request=GroupCreateSerializer,
+        responses={200: GroupCreateSerializer},
+        description="Update group name or photo. Send only the fields you wish to change.",
+    )
+    def patch(self, request, group_id):
+        """
+        Update group name or photo.
+        """
+        try:
+            group = Group.objects.get(id=group_id, user=request.user)
+        except Group.DoesNotExist:
+            return error_response(message="Group not found")
+
+        serializer = GroupCreateSerializer(
+            group, data=request.data, partial=True, context={"request": request}
+        )
+
+        if not serializer.is_valid():
+            msg = first_error_message(serializer.errors)
+            return error_response(message=msg)
+
+        group = serializer.save()
+
+        # Re-use GET logic or return a simple success, returning the new group data with URL
+        return success_response(
+            message="Group updated successfully",
+            data=GroupCreateSerializer(group, context={"request": request}).data,
+        )
+
+    @extend_schema(
+        responses={204: None},
+        description="Delete a group and all its associated data (Member/Persons and Transactions).",
+    )
+    def delete(self, request, group_id):
+        """
+        Delete group and all associated transactions/people (CASCADE).
+        """
+        try:
+            group = Group.objects.get(id=group_id, user=request.user)
+        except Group.DoesNotExist:
+            return error_response(message="Group not found")
+
+        # Cascade delete is handled by the model ForeignKey relationships
+        group.delete()
+
+        return success_response(message="Group deleted successfully")
+
 
 class PersonCreateListView(ListCreateAPIView):
     """
@@ -154,6 +207,11 @@ class PersonCreateListView(ListCreateAPIView):
             group_id=group_id, group__user=self.request.user
         ).order_by("-created_at")
 
+    @extend_schema(
+        request=PersonCreateSerializer(many=True),
+        responses={201: PersonDetailSerializer(many=True)},
+        description="Add multiple people to a group. Accepts an array of person objects.",
+    )
     def create(self, request, *args, **kwargs):
         group_id = kwargs.get("group_id")
 

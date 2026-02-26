@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.validators import RegexValidator
 from apps.common.models import BaseModel
+from apps.category.models import Category
 
 
 class Group(BaseModel):
@@ -72,6 +73,13 @@ class GroupTransaction(BaseModel):
         Person,
         on_delete=models.CASCADE,
         related_name="transactions",
+        null=True,
+        blank=True,
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name="group_transactions",
         null=True,
         blank=True,
     )
