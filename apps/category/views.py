@@ -169,6 +169,7 @@ class TransactionCreateView(ListCreateAPIView):
 
     def list(self, request, *args, **kwargs):
         from apps.group.models import GroupTransaction
+        from django.db.models import Q
 
         # Get regular transactions
         transactions = Transaction.objects.filter(user=self.request.user).order_by(
@@ -176,9 +177,10 @@ class TransactionCreateView(ListCreateAPIView):
         )
         transaction_serializer = TransactionSerializer(transactions, many=True)
 
-        # Get group transactions where owner is the payer
+        # Get group transactions where owner is either sender or receiver
         group_transactions = GroupTransaction.objects.filter(
-            user=self.request.user, person__isnull=True
+            Q(user=self.request.user)
+            & (Q(person__isnull=True) | Q(to_person__isnull=True))
         ).order_by("-date")
 
         # Prepare combined data
@@ -191,16 +193,39 @@ class TransactionCreateView(ListCreateAPIView):
             item["group_name"] = None
             combined_data.append(item)
 
-        # Add group transactions to combined data
+        # Totals calculation
+        total_income = float(
+            transactions.filter(type="income").aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+        total_expenses = float(
+            transactions.filter(type="expense").aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+
+        # Add group transactions to combined data with correct owner-perspective type
         for gt in group_transactions:
+            # Determine type from Owner's perspective
+            display_type = gt.type
+            # If owner is the sender (person is null), it's always an outflow/expense for the owner
+            if gt.person is None:
+                display_type = "expense"
+            # If owner is the receiver (to_person is null) and type is income (settlement)
+            elif gt.to_person is None and gt.type == "income":
+                display_type = "income"
+
+            # Skip if it doesn't impact owner (though filter should handle this)
+            if gt.person is not None and gt.to_person is not None:
+                continue
+
             combined_data.append(
                 {
                     "id": gt.id,
                     "user": gt.user.id,
-                    "type": gt.type,
+                    "type": display_type,
                     "category": None,
                     "category_name": "Group: " + gt.group.name,
-                    "category_type": gt.type,
+                    "category_type": display_type,
                     "amount": str(gt.amount),
                     "payment_type": gt.payment_type,
                     "date": gt.date.strftime("%Y-%m-%d"),
@@ -213,42 +238,23 @@ class TransactionCreateView(ListCreateAPIView):
                 }
             )
 
+            # Update summary totals
+            if display_type == "income":
+                total_income += float(gt.amount)
+            else:
+                total_expenses += float(gt.amount)
+
         # Sort combined data by date (descending)
         combined_data.sort(key=lambda x: x["date"], reverse=True)
 
-        # Calculate totals from both sources
-        reg_income = (
-            transactions.filter(type="income").aggregate(total=Sum("amount"))["total"]
-            or 0
-        )
-        reg_expense = (
-            transactions.filter(type="expense").aggregate(total=Sum("amount"))["total"]
-            or 0
-        )
-
-        grp_income = (
-            group_transactions.filter(type="income").aggregate(total=Sum("amount"))[
-                "total"
-            ]
-            or 0
-        )
-        grp_expense = (
-            group_transactions.filter(type="expense").aggregate(total=Sum("amount"))[
-                "total"
-            ]
-            or 0
-        )
-
-        total_income = float(reg_income) + float(grp_income)
-        total_expenses = float(reg_expense) + float(grp_expense)
         balance = total_income - total_expenses
 
         data = {
             "transactions": combined_data,
             "summary": {
-                "total_income": total_income,
-                "total_expenses": total_expenses,
-                "balance": balance,
+                "total_income": round(total_income, 2),
+                "total_expenses": round(total_expenses, 2),
+                "balance": round(balance, 2),
             },
         }
         return success_response(data=data)
@@ -310,43 +316,45 @@ class FinancialSummaryView(APIView):
         user = request.user
         from apps.group.models import GroupTransaction
 
-        # Calculate total income from both sources
+        # 1. Regular Transactions
         reg_income = (
-            Transaction.objects.filter(user=user, category__type="income").aggregate(
+            Transaction.objects.filter(user=user, type="income").aggregate(
                 total=Sum("amount")
             )["total"]
             or 0
         )
-        grp_income = (
-            GroupTransaction.objects.filter(
-                user=user, person__isnull=True, type="income"
-            ).aggregate(total=Sum("amount"))["total"]
-            or 0
-        )
-        total_income = float(reg_income) + float(grp_income)
-
-        # Calculate total expenses from both sources
-        reg_expenses = (
-            Transaction.objects.filter(user=user, category__type="expense").aggregate(
+        reg_expense = (
+            Transaction.objects.filter(user=user, type="expense").aggregate(
                 total=Sum("amount")
             )["total"]
             or 0
         )
-        grp_expenses = (
+
+        # 2. Group Transactions (Owner's Perspective)
+        # Owner as Sender (outflow)
+        grp_outflow = (
+            GroupTransaction.objects.filter(user=user, person__isnull=True).aggregate(
+                total=Sum("amount")
+            )["total"]
+            or 0
+        )
+
+        # Owner as Receiver (inflow - only for settlement/income type)
+        grp_inflow = (
             GroupTransaction.objects.filter(
-                user=user, person__isnull=True, type="expense"
+                user=user, to_person__isnull=True, type="income"
             ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
-        total_expenses = float(reg_expenses) + float(grp_expenses)
 
-        # Calculate balance
+        total_income = float(reg_income) + float(grp_inflow)
+        total_expenses = float(reg_expense) + float(grp_outflow)
         balance = total_income - total_expenses
 
         data = {
-            "total_income": total_income,
-            "total_expenses": total_expenses,
-            "balance": balance,
+            "total_income": round(total_income, 2),
+            "total_expenses": round(total_expenses, 2),
+            "balance": round(balance, 2),
         }
 
         return success_response(data=data)
