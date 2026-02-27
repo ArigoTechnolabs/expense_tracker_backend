@@ -88,6 +88,8 @@ class GroupTransaction(BaseModel):
         Category,
         on_delete=models.CASCADE,
         related_name="group_transactions",
+        null=True,
+        blank=True,
     )
     type = models.CharField(max_length=10, choices=TYPE_CHOICES, default="expense")
     amount = models.DecimalField(max_digits=10, decimal_places=2)

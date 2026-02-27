@@ -80,22 +80,24 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
     to_person_name = serializers.SerializerMethodField()
     category_name = serializers.ReadOnlyField(source="category.name")
 
-    def get_to_person_name(self, obj):
-        if obj.to_person:
-            return obj.to_person.name
-        return None
-
-    def get_person_name(self, obj):
-        if obj.person:
-            return obj.person.name
-        # If no person, display transaction as user's own
-        user = obj.user
+    def _get_owner_name(self, user):
         full_name = " ".join(
             filter(
                 None, [getattr(user, "first_name", ""), getattr(user, "last_name", "")]
             )
         )
-        return full_name if full_name.strip() else user.email
+        name = full_name if full_name.strip() else user.email
+        return name + " (Owner)"
+
+    def get_to_person_name(self, obj):
+        if obj.to_person:
+            return obj.to_person.name
+        return self._get_owner_name(obj.user)
+
+    def get_person_name(self, obj):
+        if obj.person:
+            return obj.person.name
+        return self._get_owner_name(obj.user)
 
     class Meta:
         model = GroupTransaction
@@ -132,6 +134,13 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
         # Ensure to_person belongs to group
         if to_person and group and to_person.group_id != group.id:
             raise serializers.ValidationError("To-Person must belong to the group.")
+
+        # Category is compulsory for expense, but optional for income
+        category = attrs.get("category")
+        if type == "expense" and not category:
+            raise serializers.ValidationError(
+                {"category": "Category is compulsory for expense transactions."}
+            )
 
         # Validation for Income (Settlement)
         if type == "income":
