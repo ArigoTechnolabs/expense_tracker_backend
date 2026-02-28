@@ -33,19 +33,11 @@ class Transaction(BaseModel):
         ("expense", "Expense"),
     ]
 
-    PAYMENT_TYPE_CHOICES = [
-        ("cash", "Cash"),
-        ("card", "Card"),
-        ("upi", "UPI"),
-    ]
-
     user = models.ForeignKey("accounts.User", on_delete=models.CASCADE)
     type = models.CharField(max_length=10, choices=TYPE_CHOICES, default="expense")
     category = models.ForeignKey(Category, on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    payment_type = models.CharField(
-        max_length=10, choices=PAYMENT_TYPE_CHOICES, default="cash"
-    )
+    payment_type = models.CharField(max_length=50, default="cash")
     date = models.DateField()
     note = models.TextField(blank=True, null=True)
 
