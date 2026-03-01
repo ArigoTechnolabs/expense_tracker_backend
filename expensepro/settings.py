@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.category",
     "apps.group",
+    "apps.goals",
     "contact",
 ]
 
