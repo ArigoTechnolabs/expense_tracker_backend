@@ -27,4 +27,9 @@ urlpatterns = [
         views.GroupTransactionRetrieveUpdateDeleteView.as_view(),
         name="group-transaction-detail",
     ),
+    path(
+        "<int:group_id>/simplify-debts/",
+        views.SimplifyDebtsView.as_view(),
+        name="simplify-debts",
+    ),
 ]

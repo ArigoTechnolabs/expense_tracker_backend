@@ -392,3 +392,49 @@ class GroupTransactionRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):
         transaction.delete()
 
         return success_response(message="Transaction deleted successfully")
+
+
+class SimplifyDebtsView(APIView):
+    """
+    Algorithm to simplify debts within a group.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, group_id):
+        try:
+            group = Group.objects.get(id=group_id, user=request.user)
+        except Group.DoesNotExist:
+            return error_response(message="Group not found")
+
+        transactions = group.transactions.all()
+        summary = calculate_group_summary(group, transactions, request.user)
+
+        # We focus on the 'settlements' part of the summary which already implements
+        # the min-cash-flow algorithm (debt simplification).
+        settlements = summary.get("settlements", [])
+        member_summary = summary.get("member_summary", [])
+
+        data = {
+            "group_name": group.name,
+            "total_group_expense": summary["summary"]["total_expenses"],
+            "fair_share_per_person": summary["summary"]["fair_share_per_person"],
+            "simplified_debts": settlements,
+            "member_balances": [
+                {
+                    "name": m["name"],
+                    "net_balance": m["net_balance"],
+                    "status": (
+                        "Gets back"
+                        if m["net_balance"] > 0
+                        else "Owes"
+                        if m["net_balance"] < 0
+                        else "Settled"
+                    ),
+                }
+                for m in member_summary
+            ],
+            "explanation": "This algorithm calculates the net balance for each person. Instead of multiple small payments, it finds the most efficient way to settle everyone with the minimum number of transactions.",
+        }
+
+        return success_response(data=data)
