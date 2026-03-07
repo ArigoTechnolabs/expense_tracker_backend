@@ -214,6 +214,11 @@ SPECTACULAR_SETTINGS = {
         {"url": "http://127.0.0.1:8000/", "description": "Local server"},
     ],
     "SCHEMA_PATH_PREFIX": None,
+    "ENUM_NAME_OVERRIDES": {
+        "CategoryTypeEnum": "apps.category.models.Category.TYPE_CHOICES",
+        "TransactionTypeEnum": "apps.category.models.Transaction.TYPE_CHOICES",
+        "GroupTransactionTypeEnum": "apps.group.models.GroupTransaction.TYPE_CHOICES",
+    },
     "SWAGGER_UI_SETTINGS": {
         "persistAuthorization": True,
     },

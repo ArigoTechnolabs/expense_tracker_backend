@@ -6,6 +6,7 @@ from apps.category.serializers import (
     CategoryCreateSerializer,
     TransactionSerializer,
     FinancialSummarySerializer,
+    DashboardSerializer,
 )
 from apps.common.utils import first_error_message, success_response, error_response
 from apps.common import messages
@@ -370,6 +371,7 @@ class DashboardView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+    serializer_class = DashboardSerializer
 
     def get(self, request):
         user = request.user

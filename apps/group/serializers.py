@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from apps.group.models import Group, Person, GroupTransaction
 
 
@@ -89,14 +90,10 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
         name = full_name if full_name.strip() else user.email
         return name + " (Owner)"
 
+    @extend_schema_field(serializers.CharField())
     def get_to_person_name(self, obj):
         if obj.to_person:
             return obj.to_person.name
-        return self._get_owner_name(obj.user)
-
-    def get_person_name(self, obj):
-        if obj.person:
-            return obj.person.name
         return self._get_owner_name(obj.user)
 
     class Meta:
