@@ -91,6 +91,17 @@ class GroupTransaction(BaseModel):
     date = models.DateField()
     note = models.TextField(blank=True, null=True)
 
+    # Partial splitting fields
+    split_between = models.ManyToManyField(
+        Person,
+        blank=True,
+        related_name="involved_in_transactions",
+        help_text="The people among whom the expense is split. If empty and include_owner is True, split with everyone.",
+    )
+    include_owner = models.BooleanField(
+        default=True, help_text="Whether the group owner is included in the split."
+    )
+
     def __str__(self):
         person_label = self.person.name if self.person else str(self.user.email)
         return f"{self.user.email} - {self.group.name} - {person_label} - {self.amount}"

@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from drf_spectacular.utils import extend_schema_field
 from apps.group.models import Group, Person, GroupTransaction
 
 
@@ -80,6 +79,14 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
     person_name = serializers.SerializerMethodField()
     to_person_name = serializers.SerializerMethodField()
     category_name = serializers.ReadOnlyField(source="category.name")
+    split_between_names = serializers.SerializerMethodField()
+
+    def get_split_between_names(self, obj):
+        names = [p.name for p in obj.split_between.all()]
+        if obj.include_owner:
+            owner_name = self._get_owner_name(obj.user)
+            names.append(owner_name)
+        return names
 
     def _get_owner_name(self, user):
         full_name = " ".join(
@@ -90,10 +97,14 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
         name = full_name if full_name.strip() else user.email
         return name + " (Owner)"
 
-    @extend_schema_field(serializers.CharField())
     def get_to_person_name(self, obj):
         if obj.to_person:
             return obj.to_person.name
+        return self._get_owner_name(obj.user)
+
+    def get_person_name(self, obj):
+        if obj.person:
+            return obj.person.name
         return self._get_owner_name(obj.user)
 
     class Meta:
@@ -112,6 +123,9 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
             "payment_type",
             "date",
             "note",
+            "split_between",
+            "split_between_names",
+            "include_owner",
             "created_at",
             "updated_at",
         )
@@ -127,6 +141,15 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
         # Ensure person belongs to group
         if person and group and person.group_id != group.id:
             raise serializers.ValidationError("Person must belong to the group.")
+
+        # Ensure split participants belong to group
+        split_between = attrs.get("split_between")
+        if split_between and group:
+            for p in split_between:
+                if p.group_id != group.id:
+                    raise serializers.ValidationError(
+                        f"Person {p.name} does not belong to this group."
+                    )
 
         # Ensure to_person belongs to group
         if to_person and group and to_person.group_id != group.id:

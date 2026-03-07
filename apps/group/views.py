@@ -315,6 +315,8 @@ class GroupTransactionCreateListView(ListCreateAPIView):
         )
 
     def list(self, request, *args, **kwargs):
+        from django.db.models import Q
+
         group_id = kwargs.get("group_id")
 
         # Verify group exists and belongs to user
@@ -323,11 +325,18 @@ class GroupTransactionCreateListView(ListCreateAPIView):
         except Group.DoesNotExist:
             return error_response(message="Group not found")
 
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+        # 1. Get ALL transactions for accurate balance calculation
+        all_transactions = self.get_queryset()
+        summary_data = calculate_group_summary(group, all_transactions, request.user)
 
-        # Calculate summary, member breakdown and settlements
-        summary_data = calculate_group_summary(group, queryset, request.user)
+        # 2. Filter transactions for the list: only those "done by me"
+        # 1. User paid (person is null) - applies to both expense and income
+        # 2. User received settlement (type is income and to_person is null)
+        owner_transactions = all_transactions.filter(
+            Q(person__isnull=True) | (Q(type="income") & Q(to_person__isnull=True))
+        )
+
+        serializer = self.get_serializer(owner_transactions, many=True)
 
         data = {"transactions": serializer.data, **summary_data}
         return success_response(data=data)
