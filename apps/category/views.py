@@ -212,15 +212,22 @@ class TransactionCreateView(ListCreateAPIView):
         for gt in group_transactions:
             # Determine type from Owner's perspective
             display_type = gt.type
-            # If owner is the sender (person is null), it's always an outflow/expense for the owner
-            if gt.person is None:
-                display_type = "expense"
-            # If owner is the receiver (to_person is null) and type is income (settlement)
-            elif gt.to_person is None and gt.type == "income":
-                display_type = "income"
 
-            # Skip if it doesn't impact owner (though filter should handle this)
-            if gt.person is not None and gt.to_person is not None:
+            # Logic:
+            # 1. Owner paid (person is null) -> External expense or Internal settlement paid
+            # 2. Owner received settlement (to_person is null AND type is income) -> Internal income
+
+            is_owner_payer = gt.person_id is None
+            is_owner_receiver = gt.to_person_id is None
+
+            if is_owner_payer:
+                # If owner paid, from owner's pocket it's an expense
+                display_type = "expense"
+            elif is_owner_receiver and gt.type == "income":
+                # If owner received money (settlement), it's income
+                display_type = "income"
+            else:
+                # If owner wasn't the payer and wasn't receiving a settlement, skip
                 continue
 
             combined_data.append(
