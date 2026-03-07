@@ -331,7 +331,6 @@ class GroupTransactionCreateListView(ListCreateAPIView):
 
         data = {"transactions": serializer.data, **summary_data}
         return success_response(data=data)
-        return success_response(data=data)
 
 
 class GroupTransactionRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):

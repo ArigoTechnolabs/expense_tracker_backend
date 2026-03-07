@@ -19,4 +19,5 @@ urlpatterns = [
         name="transaction-detail",
     ),
     path("summary/", views.FinancialSummaryView.as_view(), name="financial-summary"),
+    path("dashboard/", views.DashboardView.as_view(), name="dashboard"),
 ]

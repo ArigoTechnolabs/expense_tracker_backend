@@ -84,3 +84,15 @@ class FinancialSummarySerializer(serializers.Serializer):
     total_income = serializers.DecimalField(max_digits=10, decimal_places=2)
     total_expenses = serializers.DecimalField(max_digits=10, decimal_places=2)
     balance = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+
+class DashboardSerializer(serializers.Serializer):
+    """
+    Serializer for the main dashboard view data.
+    """
+
+    summary = FinancialSummarySerializer()
+    category_breakdown = serializers.ListField(child=serializers.DictField())
+    goal_progress = serializers.ListField(child=serializers.DictField())
+    recent_transactions = serializers.ListField(child=serializers.DictField())
+    monthly_trend = serializers.ListField(child=serializers.DictField())

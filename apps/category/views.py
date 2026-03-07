@@ -9,7 +9,11 @@ from apps.category.serializers import (
 )
 from apps.common.utils import first_error_message, success_response, error_response
 from apps.common import messages
+from apps.goals.models import Goal
 from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
+from datetime import timedelta
+from django.db.models import Q
 from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
@@ -355,6 +359,176 @@ class FinancialSummaryView(APIView):
             "total_income": round(total_income, 2),
             "total_expenses": round(total_expenses, 2),
             "balance": round(balance, 2),
+        }
+
+        return success_response(data=data)
+
+
+class DashboardView(APIView):
+    """
+    Get a comprehensive dashboard summary for the user.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        from apps.group.models import GroupTransaction
+
+        today = timezone.now().date()
+        first_day_of_month = today.replace(day=1)
+
+        # 1. Summary (Current Month)
+        month_reg_income = (
+            Transaction.objects.filter(
+                user=user, type="income", date__gte=first_day_of_month
+            ).aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+        month_reg_expense = (
+            Transaction.objects.filter(
+                user=user, type="expense", date__gte=first_day_of_month
+            ).aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+
+        month_grp_outflow = (
+            GroupTransaction.objects.filter(
+                user=user, person__isnull=True, date__gte=first_day_of_month
+            ).aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+        month_grp_inflow = (
+            GroupTransaction.objects.filter(
+                user=user,
+                to_person__isnull=True,
+                type="income",
+                date__gte=first_day_of_month,
+            ).aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+
+        total_income = float(month_reg_income) + float(month_grp_inflow)
+        total_expenses = float(month_reg_expense) + float(month_grp_outflow)
+        balance = total_income - total_expenses
+
+        # 2. Category Breakdown (Current Month Expenses)
+        category_breakdown = (
+            Transaction.objects.filter(
+                user=user, type="expense", date__gte=first_day_of_month
+            )
+            .values("category__name")
+            .annotate(amount=Sum("amount"))
+            .order_by("-amount")
+        )
+        formatted_breakdown = [
+            {"category": item["category__name"], "amount": float(item["amount"])}
+            for item in category_breakdown
+        ]
+
+        # 3. Goal Progress (Top 3 active goals)
+        goals = Goal.objects.filter(user=user).order_by("expected_date")[:3]
+        goal_data = []
+        for goal in goals:
+            saved = float(goal.saved_amount)
+            target = float(goal.target_amount)
+            percentage = (saved / target * 100) if target > 0 else 0
+            goal_data.append(
+                {
+                    "id": goal.id,
+                    "name": goal.category.name,
+                    "target": target,
+                    "saved": saved,
+                    "percentage": round(percentage, 2),
+                }
+            )
+
+        # 4. Recent Transactions (Last 5 combined)
+        recent_reg = Transaction.objects.filter(user=user).order_by("-date")[:5]
+        recent_list = []
+        for t in recent_reg:
+            recent_list.append(
+                {
+                    "id": f"reg_{t.id}",
+                    "type": t.type,
+                    "category": t.category.name,
+                    "amount": float(t.amount),
+                    "date": t.date.strftime("%Y-%m-%d"),
+                    "is_group": False,
+                }
+            )
+
+        recent_grp = GroupTransaction.objects.filter(
+            Q(user=user) & (Q(person__isnull=True) | Q(to_person__isnull=True))
+        ).order_by("-date")[:5]
+        for gt in recent_grp:
+            # Type from owner perspective
+            display_type = gt.type
+            if gt.person is None:
+                display_type = "expense"
+            elif gt.to_person is None and gt.type == "income":
+                display_type = "income"
+
+            recent_list.append(
+                {
+                    "id": f"grp_{gt.id}",
+                    "type": display_type,
+                    "category": f"Group: {gt.group.name}",
+                    "amount": float(gt.amount),
+                    "date": gt.date.strftime("%Y-%m-%d"),
+                    "is_group": True,
+                }
+            )
+
+        recent_list.sort(key=lambda x: x["date"], reverse=True)
+        recent_list = recent_list[:5]
+
+        # 5. Monthly Trend (Last 6 Months)
+        six_months_ago = today - timedelta(days=180)  # noqa: F841
+        trends = []
+        for i in range(5, -1, -1):
+            temp_date = today - timedelta(days=i * 30)
+            month_start = temp_date.replace(day=1)
+            # Find last day of current month in loop
+            if month_start.month == 12:
+                next_month = month_start.replace(
+                    year=month_start.year + 1, month=1, day=1
+                )
+            else:
+                next_month = month_start.replace(month=month_start.month + 1, day=1)
+            month_end = next_month - timedelta(days=1)
+
+            inc = (
+                Transaction.objects.filter(
+                    user=user, type="income", date__range=[month_start, month_end]
+                ).aggregate(Sum("amount"))["amount__sum"]
+                or 0
+            )
+            exp = (
+                Transaction.objects.filter(
+                    user=user, type="expense", date__range=[month_start, month_end]
+                ).aggregate(Sum("amount"))["amount__sum"]
+                or 0
+            )
+
+            trends.append(
+                {
+                    "month": month_start.strftime("%b"),
+                    "income": float(inc),
+                    "expense": float(exp),
+                }
+            )
+
+        data = {
+            "summary": {
+                "total_income": round(total_income, 2),
+                "total_expenses": round(total_expenses, 2),
+                "balance": round(balance, 2),
+            },
+            "category_breakdown": formatted_breakdown,
+            "goal_progress": goal_data,
+            "recent_transactions": recent_list,
+            "monthly_trend": trends,
         }
 
         return success_response(data=data)

@@ -30,6 +30,7 @@ urlpatterns = [
     path("accounts/", include("apps.accounts.urls")),
     path("categories/", include("apps.category.urls")),
     path("groups/", include("apps.group.urls")),
+    path("goals/", include("apps.goals.urls")),
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/swagger/", SpectacularSwaggerView.as_view(url_name="schema")),
     path("docs/redoc/", SpectacularRedocView.as_view(url_name="schema")),
