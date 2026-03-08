@@ -528,7 +528,10 @@ class DashboardView(APIView):
                     "id": goal.id,
                     "name": goal.category.name,
                     "target": target,
+                    "target_amount": target,
                     "saved": saved,
+                    "saved_amount": saved,
+                    "amount": saved,
                     "percentage": round(percentage, 2),
                 }
             )
