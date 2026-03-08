@@ -174,6 +174,7 @@ class TransactionCreateView(ListCreateAPIView):
 
     def list(self, request, *args, **kwargs):
         from apps.group.models import GroupTransaction
+        from apps.goals.models import GoalEntry
         from django.db.models import Q
 
         # Get regular transactions
@@ -196,6 +197,8 @@ class TransactionCreateView(ListCreateAPIView):
             item["is_group_transaction"] = False
             item["group_id"] = None
             item["group_name"] = None
+            item["is_goal_entry"] = False
+            item["goal_id"] = None
             combined_data.append(item)
 
         # Totals calculation
@@ -245,6 +248,8 @@ class TransactionCreateView(ListCreateAPIView):
                     "is_group_transaction": True,
                     "group_id": gt.group.id,
                     "group_name": gt.group.name,
+                    "is_goal_entry": False,
+                    "goal_id": None,
                     "created_at": gt.created_at.isoformat(),
                     "updated_at": gt.updated_at.isoformat(),
                 }
@@ -255,6 +260,34 @@ class TransactionCreateView(ListCreateAPIView):
                 total_income += float(gt.amount)
             else:
                 total_expenses += float(gt.amount)
+
+        # Get goal entries
+        goal_entries = GoalEntry.objects.filter(goal__user=self.request.user).order_by(
+            "-date"
+        )
+        for ge in goal_entries:
+            combined_data.append(
+                {
+                    "id": ge.id,
+                    "user": self.request.user.id,
+                    "type": "expense",
+                    "category": None,
+                    "category_name": "Goal: " + ge.goal.category.name,
+                    "category_type": "expense",
+                    "amount": str(ge.amount),
+                    "payment_type": "cash",
+                    "date": ge.date.strftime("%Y-%m-%d"),
+                    "note": f"Saved towards {ge.goal.category.name}",
+                    "is_group_transaction": False,
+                    "group_id": None,
+                    "group_name": None,
+                    "is_goal_entry": True,
+                    "goal_id": ge.goal.id,
+                    "created_at": ge.created_at.isoformat(),
+                    "updated_at": ge.updated_at.isoformat(),
+                }
+            )
+            total_expenses += float(ge.amount)
 
         # Sort combined data by date (descending)
         combined_data.sort(key=lambda x: x["date"], reverse=True)
