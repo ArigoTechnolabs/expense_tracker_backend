@@ -16,9 +16,11 @@ from apps.accounts.serializers import (
     RegisterCompleteSerializer,
     ResetPasswordSerializer,
     UserResponseSerializer,
+    UserUpdateSerializer,
 )
 from apps.accounts.utils import send_otp_email
 from apps.common import messages
+from drf_spectacular.utils import extend_schema
 
 
 class RegisterRequestOtpView(CreateAPIView):
@@ -150,13 +152,13 @@ class UserProfileView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses=UserResponseSerializer)
     def get(self, request):
         serializer = UserResponseSerializer(request.user)
         return success_response(data=serializer.data)
 
+    @extend_schema(request=UserUpdateSerializer, responses=UserResponseSerializer)
     def patch(self, request):
-        from apps.accounts.serializers import UserUpdateSerializer
-
         serializer = UserUpdateSerializer(request.user, data=request.data, partial=True)
         if not serializer.is_valid():
             return error_response(first_error_message(serializer.errors))
