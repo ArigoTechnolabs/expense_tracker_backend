@@ -360,6 +360,7 @@ class FinancialSummaryView(APIView):
     def get(self, request):
         user = request.user
         from apps.group.models import GroupTransaction
+        from apps.goals.models import GoalEntry
 
         # 1. Regular Transactions
         reg_income = (
@@ -392,8 +393,16 @@ class FinancialSummaryView(APIView):
             or 0
         )
 
+        # 3. Goal Entries
+        goal_expense = (
+            GoalEntry.objects.filter(goal__user=user).aggregate(total=Sum("amount"))[
+                "total"
+            ]
+            or 0
+        )
+
         total_income = float(reg_income) + float(grp_inflow)
-        total_expenses = float(reg_expense) + float(grp_outflow)
+        total_expenses = float(reg_expense) + float(grp_outflow) + float(goal_expense)
         balance = total_income - total_expenses
 
         data = {
@@ -416,6 +425,7 @@ class DashboardView(APIView):
     def get(self, request):
         user = request.user
         from apps.group.models import GroupTransaction
+        from apps.goals.models import GoalEntry
 
         today = timezone.now().date()
         first_day_of_month = today.replace(day=1)
@@ -450,12 +460,23 @@ class DashboardView(APIView):
             or 0
         )
 
+        month_goal_expense = (
+            GoalEntry.objects.filter(
+                goal__user=user, date__gte=first_day_of_month
+            ).aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
+
         total_income = float(month_reg_income) + float(month_grp_inflow)
-        total_expenses = float(month_reg_expense) + float(month_grp_outflow)
+        total_expenses = (
+            float(month_reg_expense)
+            + float(month_grp_outflow)
+            + float(month_goal_expense)
+        )
         balance = total_income - total_expenses
 
         # 2. Category Breakdown (Current Month Expenses)
-        category_breakdown = (
+        category_breakdown = list(
             Transaction.objects.filter(
                 user=user, type="expense", date__gte=first_day_of_month
             )
@@ -463,6 +484,23 @@ class DashboardView(APIView):
             .annotate(amount=Sum("amount"))
             .order_by("-amount")
         )
+
+        goal_breakdown = (
+            GoalEntry.objects.filter(goal__user=user, date__gte=first_day_of_month)
+            .values("goal__category__name")
+            .annotate(amount=Sum("amount"))
+        )
+
+        for gb in goal_breakdown:
+            category_breakdown.append(
+                {
+                    "category__name": "Goal: " + gb["goal__category__name"],
+                    "amount": gb["amount"],
+                }
+            )
+
+        # Re-sort after combining
+        category_breakdown.sort(key=lambda x: x["amount"], reverse=True)
 
         breakdown_total = sum(float(item["amount"]) for item in category_breakdown)
 
@@ -529,8 +567,29 @@ class DashboardView(APIView):
                     "amount": float(gt.amount),
                     "date": gt.date.strftime("%Y-%m-%d"),
                     "is_group": True,
+                    "is_goal_entry": False,
                 }
             )
+
+        recent_goal_entries = GoalEntry.objects.filter(goal__user=user).order_by(
+            "-date"
+        )[:5]
+        for ge in recent_goal_entries:
+            recent_list.append(
+                {
+                    "id": f"goal_{ge.id}",
+                    "type": "expense",
+                    "category": f"Goal: {ge.goal.category.name}",
+                    "amount": float(ge.amount),
+                    "date": ge.date.strftime("%Y-%m-%d"),
+                    "is_group": False,
+                    "is_goal_entry": True,
+                }
+            )
+
+        for i in range(len(recent_list)):
+            if "is_goal_entry" not in recent_list[i]:
+                recent_list[i]["is_goal_entry"] = False
 
         recent_list.sort(key=lambda x: x["date"], reverse=True)
         recent_list = recent_list[:5]
@@ -563,11 +622,18 @@ class DashboardView(APIView):
                 or 0
             )
 
+            goal_exp = (
+                GoalEntry.objects.filter(
+                    goal__user=user, date__range=[month_start, month_end]
+                ).aggregate(Sum("amount"))["amount__sum"]
+                or 0
+            )
+
             trends.append(
                 {
                     "month": month_start.strftime("%b"),
                     "income": float(inc),
-                    "expense": float(exp),
+                    "expense": float(exp) + float(goal_exp),
                 }
             )
 
