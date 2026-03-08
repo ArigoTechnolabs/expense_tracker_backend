@@ -430,10 +430,20 @@ class DashboardView(APIView):
             .annotate(amount=Sum("amount"))
             .order_by("-amount")
         )
-        formatted_breakdown = [
-            {"category": item["category__name"], "amount": float(item["amount"])}
-            for item in category_breakdown
-        ]
+
+        breakdown_total = sum(float(item["amount"]) for item in category_breakdown)
+
+        formatted_breakdown = []
+        for item in category_breakdown:
+            amt = float(item["amount"])
+            pct = round((amt / breakdown_total * 100), 2) if breakdown_total > 0 else 0
+            formatted_breakdown.append(
+                {
+                    "category": item["category__name"],
+                    "amount": amt,
+                    "percentage": pct,
+                }
+            )
 
         # 3. Goal Progress (Top 3 active goals)
         goals = Goal.objects.filter(user=user).order_by("expected_date")[:3]
