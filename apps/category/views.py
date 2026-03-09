@@ -476,7 +476,7 @@ class DashboardView(APIView):
         balance = total_income - total_expenses
 
         # 2. Category Breakdown (Current Month Expenses)
-        category_breakdown = list(
+        category_breakdown = (
             Transaction.objects.filter(
                 user=user, type="expense", date__gte=first_day_of_month
             )
@@ -484,23 +484,6 @@ class DashboardView(APIView):
             .annotate(amount=Sum("amount"))
             .order_by("-amount")
         )
-
-        goal_breakdown = (
-            GoalEntry.objects.filter(goal__user=user, date__gte=first_day_of_month)
-            .values("goal__category__name")
-            .annotate(amount=Sum("amount"))
-        )
-
-        for gb in goal_breakdown:
-            category_breakdown.append(
-                {
-                    "category__name": "Goal: " + gb["goal__category__name"],
-                    "amount": gb["amount"],
-                }
-            )
-
-        # Re-sort after combining
-        category_breakdown.sort(key=lambda x: x["amount"], reverse=True)
 
         breakdown_total = sum(float(item["amount"]) for item in category_breakdown)
 
