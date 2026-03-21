@@ -58,3 +58,5 @@ docker-compose.override.yml
 passenger_wsgi.py
 tmp/
 
+# Firebase
+firebase-credentials.json
