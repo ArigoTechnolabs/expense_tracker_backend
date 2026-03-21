@@ -7,6 +7,7 @@ from apps.category.serializers import (
     TransactionSerializer,
     FinancialSummarySerializer,
     DashboardSerializer,
+    TransactionListResponseSerializer,
 )
 from apps.common.utils import first_error_message, success_response, error_response
 from apps.common import messages
@@ -21,6 +22,7 @@ from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiTypes,
 )
+import calendar
 
 
 @extend_schema_view(
@@ -147,6 +149,62 @@ class CategoryRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):
         return success_response(message=messages.EXPENSE_CATEGORY_DELETED_SUCCESSFULLY)
 
 
+def get_month_date_range(request):
+    """
+    Helper function to determine the date range for filtering.
+    Defaults to the current month if no parameters are provided.
+    Logic:
+    1. If start_date and end_date are provided, use them.
+    2. If month and year are provided, use that month.
+    3. If only year is provided, use the entire year.
+    4. Otherwise, default to the current month.
+    """
+    today = timezone.now().date()
+    start_date_param = request.query_params.get("start_date")
+    end_date_param = request.query_params.get("end_date")
+    month_param = request.query_params.get("month")
+    year_param = request.query_params.get("year")
+
+    # 1. Start and End Date Range
+    if start_date_param and end_date_param:
+        try:
+            start_date = timezone.datetime.strptime(start_date_param, "%Y-%m-%d").date()
+            end_date = timezone.datetime.strptime(end_date_param, "%Y-%m-%d").date()
+            return start_date, end_date
+        except (ValueError, TypeError):
+            pass
+
+    # Determine Year (default to current year)
+    try:
+        year = int(year_param) if year_param else today.year
+    except (ValueError, TypeError):
+        year = today.year
+
+    # 2. Month and Year
+    if month_param:
+        try:
+            month = int(month_param)
+            if 1 <= month <= 12:
+                last_day = calendar.monthrange(year, month)[1]
+                start_date = today.replace(year=year, month=month, day=1)
+                end_date = today.replace(year=year, month=month, day=last_day)
+                return start_date, end_date
+        except (ValueError, TypeError):
+            pass
+
+    # 3. Only Year
+    if year_param and not month_param:
+        start_date = today.replace(year=year, month=1, day=1)
+        end_date = today.replace(year=year, month=12, day=31)
+        return start_date, end_date
+
+    # 4. Default: Current Month
+    start_date = today.replace(day=1)
+    last_day = calendar.monthrange(today.year, today.month)[1]
+    end_date = today.replace(day=last_day)
+    return start_date, end_date
+
+
 class TransactionCreateView(ListCreateAPIView):
     """
     Create and list transactions.
@@ -156,6 +214,9 @@ class TransactionCreateView(ListCreateAPIView):
     serializer_class = TransactionSerializer
 
     def get_queryset(self):
+        """
+        Base queryset for transactions, ordered by date descending.
+        """
         return Transaction.objects.filter(user=self.request.user).order_by("-date")
 
     def create(self, request, *args, **kwargs):
@@ -172,22 +233,142 @@ class TransactionCreateView(ListCreateAPIView):
             data=TransactionSerializer(transaction).data,
         )
 
-    def list(self, request, *args, **kwargs):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="month",
+                description="Filter by month (1-12). Defaults to current month.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="year",
+                description="Filter by year. Defaults to current year.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="start_date",
+                description="Filter by start date (YYYY-MM-DD).",
+                required=False,
+                type=OpenApiTypes.DATE,
+            ),
+            OpenApiParameter(
+                name="end_date",
+                description="Filter by end date (YYYY-MM-DD).",
+                required=False,
+                type=OpenApiTypes.DATE,
+            ),
+            OpenApiParameter(
+                name="category_id",
+                description="Filter by category ID.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="type",
+                description="Filter by transaction type (income or expense).",
+                required=False,
+                type=OpenApiTypes.STR,
+                enum=["income", "expense"],
+            ),
+            OpenApiParameter(
+                name="min_amount",
+                description="Filter by minimum amount.",
+                required=False,
+                type=OpenApiTypes.DECIMAL,
+            ),
+            OpenApiParameter(
+                name="max_amount",
+                description="Filter by maximum amount.",
+                required=False,
+                type=OpenApiTypes.DECIMAL,
+            ),
+            OpenApiParameter(
+                name="payment_type",
+                description="Filter by payment type (e.g., cash, online).",
+                required=False,
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
+                name="search",
+                description="Search in notes.",
+                required=False,
+                type=OpenApiTypes.STR,
+            ),
+        ],
+        responses={200: TransactionListResponseSerializer},
+    )
+    def get(self, request, *args, **kwargs):
         from apps.group.models import GroupTransaction
         from apps.goals.models import GoalEntry
         from django.db.models import Q
 
-        # Get regular transactions
-        transactions = Transaction.objects.filter(user=self.request.user).order_by(
-            "-date"
+        # 1. Determine Date Range (Default: Current Month)
+        # This solves the requirement: "by default the transactions of the current month"
+        start_date, end_date = get_month_date_range(request)
+
+        # 2. Extract Other Filters
+        category_id = request.query_params.get("category_id")
+        transaction_type = request.query_params.get("type")
+        min_amount = request.query_params.get("min_amount")
+        max_amount = request.query_params.get("max_amount")
+        payment_type = request.query_params.get("payment_type")
+        search = request.query_params.get("search")
+
+        # 3. Get and Filter Regular Transactions
+        transactions = Transaction.objects.filter(
+            user=self.request.user, date__range=[start_date, end_date]
         )
+
+        # Apply additional filters to regular transactions
+        if category_id:
+            transactions = transactions.filter(category_id=category_id)
+        if transaction_type:
+            transactions = transactions.filter(type=transaction_type)
+        if min_amount:
+            transactions = transactions.filter(amount__gte=min_amount)
+        if max_amount:
+            transactions = transactions.filter(amount__lte=max_amount)
+        if payment_type:
+            transactions = transactions.filter(payment_type__icontains=payment_type)
+        if search:
+            transactions = transactions.filter(note__icontains=search)
+
+        transactions = transactions.order_by("-date")
         transaction_serializer = TransactionSerializer(transactions, many=True)
 
-        # Get group transactions where owner is either sender or receiver
+        # 4. Get and Filter Group Transactions (Owner's perspective)
+        # Note: Filtering by category_id on Group Transactions only if it's a regular category filter
         group_transactions = GroupTransaction.objects.filter(
             Q(user=self.request.user)
-            & (Q(person__isnull=True) | Q(to_person__isnull=True))
-        ).order_by("-date")
+            & (Q(person__isnull=True) | Q(to_person__isnull=True)),
+            date__range=[start_date, end_date],
+        )
+
+        if transaction_type:
+            # We filter by display type later, but here we can pre-filter known certainties
+            if transaction_type == "expense":
+                group_transactions = group_transactions.filter(person__isnull=True)
+            elif transaction_type == "income":
+                group_transactions = group_transactions.filter(
+                    to_person__isnull=True, type="income"
+                )
+
+        if min_amount:
+            group_transactions = group_transactions.filter(amount__gte=min_amount)
+        if max_amount:
+            group_transactions = group_transactions.filter(amount__lte=max_amount)
+        if payment_type:
+            group_transactions = group_transactions.filter(
+                payment_type__icontains=payment_type
+            )
+        if search:
+            group_transactions = group_transactions.filter(note__icontains=search)
+        if category_id:
+            group_transactions = group_transactions.filter(category_id=category_id)
+
+        group_transactions = group_transactions.order_by("-date")
 
         # Prepare combined data
         combined_data = []
@@ -201,7 +382,7 @@ class TransactionCreateView(ListCreateAPIView):
             item["goal_id"] = None
             combined_data.append(item)
 
-        # Totals calculation
+        # Totals calculation (for the filtered period)
         total_income = float(
             transactions.filter(type="income").aggregate(total=Sum("amount"))["total"]
             or 0
@@ -211,26 +392,19 @@ class TransactionCreateView(ListCreateAPIView):
             or 0
         )
 
-        # Add group transactions to combined data with correct owner-perspective type
+        # 5. Process Group Transactions
         for gt in group_transactions:
             # Determine type from Owner's perspective
-            display_type = gt.type
-
-            # Logic:
-            # 1. Owner paid (person is null) -> External expense or Internal settlement paid
-            # 2. Owner received settlement (to_person is null AND type is income) -> Internal income
-
             is_owner_payer = gt.person_id is None
             is_owner_receiver = gt.to_person_id is None
 
+            display_type = None
             if is_owner_payer:
-                # If owner paid, from owner's pocket it's an expense
                 display_type = "expense"
             elif is_owner_receiver and gt.type == "income":
-                # If owner received money (settlement), it's income
                 display_type = "income"
-            else:
-                # If owner wasn't the payer and wasn't receiving a settlement, skip
+
+            if not display_type:
                 continue
 
             combined_data.append(
@@ -238,8 +412,10 @@ class TransactionCreateView(ListCreateAPIView):
                     "id": gt.id,
                     "user": gt.user.id,
                     "type": display_type,
-                    "category": None,
-                    "category_name": "Group: " + gt.group.name,
+                    "category": gt.category.id if gt.category else None,
+                    "category_name": gt.category.name
+                    if gt.category
+                    else "Group: " + gt.group.name,
                     "category_type": display_type,
                     "amount": str(gt.amount),
                     "payment_type": gt.payment_type,
@@ -261,33 +437,42 @@ class TransactionCreateView(ListCreateAPIView):
             else:
                 total_expenses += float(gt.amount)
 
-        # Get goal entries
-        goal_entries = GoalEntry.objects.filter(goal__user=self.request.user).order_by(
-            "-date"
-        )
-        for ge in goal_entries:
-            combined_data.append(
-                {
-                    "id": ge.id,
-                    "user": self.request.user.id,
-                    "type": "expense",
-                    "category": None,
-                    "category_name": "Goal: " + ge.goal.category.name,
-                    "category_type": "expense",
-                    "amount": str(ge.amount),
-                    "payment_type": "cash",
-                    "date": ge.date.strftime("%Y-%m-%d"),
-                    "note": f"Saved towards {ge.goal.category.name}",
-                    "is_group_transaction": False,
-                    "group_id": None,
-                    "group_name": None,
-                    "is_goal_entry": True,
-                    "goal_id": ge.goal.id,
-                    "created_at": ge.created_at.isoformat(),
-                    "updated_at": ge.updated_at.isoformat(),
-                }
+        # 6. Get and Filter Goal Entries
+        # Goal entries are always 'expense' types (savings outflow)
+        if not transaction_type or transaction_type == "expense":
+            goal_entries = GoalEntry.objects.filter(
+                goal__user=self.request.user, date__range=[start_date, end_date]
             )
-            total_expenses += float(ge.amount)
+
+            # Apply amount filters
+            if min_amount:
+                goal_entries = goal_entries.filter(amount__gte=min_amount)
+            if max_amount:
+                goal_entries = goal_entries.filter(amount__lte=max_amount)
+
+            for ge in goal_entries:
+                combined_data.append(
+                    {
+                        "id": ge.id,
+                        "user": self.request.user.id,
+                        "type": "expense",
+                        "category": None,
+                        "category_name": "Goal: " + ge.goal.category.name,
+                        "category_type": "expense",
+                        "amount": str(ge.amount),
+                        "payment_type": "cash",
+                        "date": ge.date.strftime("%Y-%m-%d"),
+                        "note": f"Saved towards {ge.goal.category.name}",
+                        "is_group_transaction": False,
+                        "group_id": None,
+                        "group_name": None,
+                        "is_goal_entry": True,
+                        "goal_id": ge.goal.id,
+                        "created_at": ge.created_at.isoformat(),
+                        "updated_at": ge.updated_at.isoformat(),
+                    }
+                )
+                total_expenses += float(ge.amount)
 
         # Sort combined data by date (descending)
         combined_data.sort(key=lambda x: x["date"], reverse=True)
@@ -300,6 +485,8 @@ class TransactionCreateView(ListCreateAPIView):
                 "total_income": round(total_income, 2),
                 "total_expenses": round(total_expenses, 2),
                 "balance": round(balance, 2),
+                "filtered_from": start_date.strftime("%Y-%m-%d"),
+                "filtered_to": end_date.strftime("%Y-%m-%d"),
             },
         }
         return success_response(data=data)
@@ -357,47 +544,81 @@ class FinancialSummaryView(APIView):
     permission_classes = [IsAuthenticated]
     serializer_class = FinancialSummarySerializer
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="month",
+                description="Filter by month (1-12). Defaults to current month.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="year",
+                description="Filter by year. Defaults to current year.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="start_date",
+                description="Filter by start date (YYYY-MM-DD).",
+                required=False,
+                type=OpenApiTypes.DATE,
+            ),
+            OpenApiParameter(
+                name="end_date",
+                description="Filter by end date (YYYY-MM-DD).",
+                required=False,
+                type=OpenApiTypes.DATE,
+            ),
+        ]
+    )
     def get(self, request):
         user = request.user
         from apps.group.models import GroupTransaction
         from apps.goals.models import GoalEntry
 
+        # Determine Date Range (Default: Current Month)
+        start_date, end_date = get_month_date_range(request)
+
         # 1. Regular Transactions
         reg_income = (
-            Transaction.objects.filter(user=user, type="income").aggregate(
-                total=Sum("amount")
-            )["total"]
+            Transaction.objects.filter(
+                user=user, type="income", date__range=[start_date, end_date]
+            ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
         reg_expense = (
-            Transaction.objects.filter(user=user, type="expense").aggregate(
-                total=Sum("amount")
-            )["total"]
+            Transaction.objects.filter(
+                user=user, type="expense", date__range=[start_date, end_date]
+            ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
 
         # 2. Group Transactions (Owner's Perspective)
         # Owner as Sender (outflow)
         grp_outflow = (
-            GroupTransaction.objects.filter(user=user, person__isnull=True).aggregate(
-                total=Sum("amount")
-            )["total"]
+            GroupTransaction.objects.filter(
+                user=user, person__isnull=True, date__range=[start_date, end_date]
+            ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
 
         # Owner as Receiver (inflow - only for settlement/income type)
         grp_inflow = (
             GroupTransaction.objects.filter(
-                user=user, to_person__isnull=True, type="income"
+                user=user,
+                to_person__isnull=True,
+                type="income",
+                date__range=[start_date, end_date],
             ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
 
         # 3. Goal Entries
         goal_expense = (
-            GoalEntry.objects.filter(goal__user=user).aggregate(total=Sum("amount"))[
-                "total"
-            ]
+            GoalEntry.objects.filter(
+                goal__user=user, date__range=[start_date, end_date]
+            ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
 
@@ -409,6 +630,8 @@ class FinancialSummaryView(APIView):
             "total_income": round(total_income, 2),
             "total_expenses": round(total_expenses, 2),
             "balance": round(balance, 2),
+            "filtered_from": start_date.strftime("%Y-%m-%d"),
+            "filtered_to": end_date.strftime("%Y-%m-%d"),
         }
 
         return success_response(data=data)
@@ -422,31 +645,61 @@ class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
     serializer_class = DashboardSerializer
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="month",
+                description="Filter by month (1-12). Defaults to current month.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="year",
+                description="Filter by year. Defaults to current year.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="start_date",
+                description="Filter by start date (YYYY-MM-DD).",
+                required=False,
+                type=OpenApiTypes.DATE,
+            ),
+            OpenApiParameter(
+                name="end_date",
+                description="Filter by end date (YYYY-MM-DD).",
+                required=False,
+                type=OpenApiTypes.DATE,
+            ),
+        ]
+    )
     def get(self, request):
         user = request.user
         from apps.group.models import GroupTransaction
         from apps.goals.models import GoalEntry
 
+        # Determine Date Range (Default: Current Month)
+        # Requirement: "dashboard, it should be by default the transactions of the current month"
         today = timezone.now().date()
-        first_day_of_month = today.replace(day=1)
+        start_date, end_date = get_month_date_range(request)
 
-        # 1. Summary (Current Month)
+        # 1. Summary (For the selected/default period)
         month_reg_income = (
             Transaction.objects.filter(
-                user=user, type="income", date__gte=first_day_of_month
+                user=user, type="income", date__range=[start_date, end_date]
             ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
         month_reg_expense = (
             Transaction.objects.filter(
-                user=user, type="expense", date__gte=first_day_of_month
+                user=user, type="expense", date__range=[start_date, end_date]
             ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
 
         month_grp_outflow = (
             GroupTransaction.objects.filter(
-                user=user, person__isnull=True, date__gte=first_day_of_month
+                user=user, person__isnull=True, date__range=[start_date, end_date]
             ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
@@ -455,14 +708,14 @@ class DashboardView(APIView):
                 user=user,
                 to_person__isnull=True,
                 type="income",
-                date__gte=first_day_of_month,
+                date__range=[start_date, end_date],
             ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
 
         month_goal_expense = (
             GoalEntry.objects.filter(
-                goal__user=user, date__gte=first_day_of_month
+                goal__user=user, date__range=[start_date, end_date]
             ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
@@ -475,10 +728,10 @@ class DashboardView(APIView):
         )
         balance = total_income - total_expenses
 
-        # 2. Category Breakdown (Current Month Expenses)
+        # 2. Category Breakdown (Selected period expenses)
         category_breakdown = (
             Transaction.objects.filter(
-                user=user, type="expense", date__gte=first_day_of_month
+                user=user, type="expense", date__range=[start_date, end_date]
             )
             .values("category__name")
             .annotate(amount=Sum("amount"))
@@ -625,6 +878,8 @@ class DashboardView(APIView):
                 "total_income": round(total_income, 2),
                 "total_expenses": round(total_expenses, 2),
                 "balance": round(balance, 2),
+                "filtered_from": start_date.strftime("%Y-%m-%d"),
+                "filtered_to": end_date.strftime("%Y-%m-%d"),
             },
             "category_breakdown": formatted_breakdown,
             "goal_progress": goal_data,

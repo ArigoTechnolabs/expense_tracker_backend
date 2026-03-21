@@ -84,6 +84,8 @@ class FinancialSummarySerializer(serializers.Serializer):
     total_income = serializers.DecimalField(max_digits=10, decimal_places=2)
     total_expenses = serializers.DecimalField(max_digits=10, decimal_places=2)
     balance = serializers.DecimalField(max_digits=10, decimal_places=2)
+    filtered_from = serializers.DateField(required=False)
+    filtered_to = serializers.DateField(required=False)
 
 
 class DashboardSerializer(serializers.Serializer):
@@ -131,3 +133,12 @@ class EmiSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data["user"] = self.context["request"].user
         return super().create(validated_data)
+
+
+class TransactionListResponseSerializer(serializers.Serializer):
+    """
+    Serializer for the combined transaction list response.
+    """
+
+    transactions = serializers.ListField(child=serializers.DictField())
+    summary = FinancialSummarySerializer()
