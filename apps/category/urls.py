@@ -20,4 +20,8 @@ urlpatterns = [
     ),
     path("summary/", views.FinancialSummaryView.as_view(), name="financial-summary"),
     path("dashboard/", views.DashboardView.as_view(), name="dashboard"),
+    path("emi/", views.EmiCreateView.as_view(), name="emi-create"),
+    path(
+        "emi/<int:id>/", views.EmiRetrieveUpdateDeleteView.as_view(), name="emi-detail"
+    ),
 ]

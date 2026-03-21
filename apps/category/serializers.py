@@ -96,3 +96,38 @@ class DashboardSerializer(serializers.Serializer):
     goal_progress = serializers.ListField(child=serializers.DictField())
     recent_transactions = serializers.ListField(child=serializers.DictField())
     monthly_trend = serializers.ListField(child=serializers.DictField())
+
+
+class EmiSerializer(serializers.ModelSerializer):
+    """
+    Serializer for EMI tracking.
+    """
+
+    class Meta:
+        from apps.category.models import Emi
+
+        model = Emi
+        fields = (
+            "id",
+            "user",
+            "name",
+            "amount",
+            "next_due_date",
+            "reminder_time",
+            "category",
+            "is_active",
+            "last_processed_date",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "user",
+            "last_processed_date",
+            "created_at",
+            "updated_at",
+        )
+
+    def create(self, validated_data):
+        validated_data["user"] = self.context["request"].user
+        return super().create(validated_data)

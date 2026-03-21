@@ -633,3 +633,76 @@ class DashboardView(APIView):
         }
 
         return success_response(data=data)
+
+
+class EmiCreateView(ListCreateAPIView):
+    """
+    Create and list EMIs.
+    """
+
+    permission_classes = [IsAuthenticated]
+    from apps.category.serializers import EmiSerializer
+
+    serializer_class = EmiSerializer
+
+    def get_queryset(self):
+        from apps.category.models import Emi
+
+        return Emi.objects.filter(user=self.request.user).order_by("next_due_date")
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            msg = first_error_message(serializer.errors)
+            return error_response(message=msg)
+
+        emi = serializer.save()
+        return success_response(
+            message="EMI created successfully",
+            data=self.get_serializer(emi).data,
+        )
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return success_response(data=serializer.data)
+
+
+class EmiRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, update or delete an EMI.
+    """
+
+    permission_classes = [IsAuthenticated]
+    from apps.category.serializers import EmiSerializer
+
+    serializer_class = EmiSerializer
+    lookup_field = "id"
+
+    def get_queryset(self):
+        from apps.category.models import Emi
+
+        return Emi.objects.filter(user=self.request.user)
+
+    def retrieve(self, request, *args, **kwargs):
+        emi = self.get_object()
+        serializer = self.get_serializer(emi)
+        return success_response(data=serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        emi = self.get_object()
+        serializer = self.get_serializer(emi, data=request.data, partial=True)
+        if not serializer.is_valid():
+            msg = first_error_message(serializer.errors)
+            return error_response(message=msg)
+
+        emi = serializer.save()
+        return success_response(
+            message="EMI updated successfully",
+            data=self.get_serializer(emi).data,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        emi = self.get_object()
+        emi.delete()
+        return success_response(message="EMI deleted successfully")

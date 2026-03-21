@@ -46,3 +46,28 @@ class Transaction(BaseModel):
 
     class Meta:
         ordering = ["-date"]
+
+
+class Emi(BaseModel):
+    """
+    Stores EMI details to track Equated Monthly Installments.
+    """
+
+    user = models.ForeignKey("accounts.User", on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    next_due_date = models.DateField(help_text="The next date this EMI is due")
+    reminder_time = models.TimeField(help_text="Time of day to send the reminder")
+    category = models.ForeignKey(
+        Category, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    is_active = models.BooleanField(default=True)
+    last_processed_date = models.DateField(
+        null=True, blank=True, help_text="Last date the EMI expense was added"
+    )
+    last_notified_date = models.DateField(
+        null=True, blank=True, help_text="Last date a reminder was sent"
+    )
+
+    def __str__(self):
+        return f"{self.user.email} - {self.name} - {self.amount}"
