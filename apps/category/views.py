@@ -149,15 +149,12 @@ class CategoryRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):
         return success_response(message=messages.EXPENSE_CATEGORY_DELETED_SUCCESSFULLY)
 
 
-def get_month_date_range(request):
+def get_month_date_range(request, default_to_current=True):
     """
     Helper function to determine the date range for filtering.
-    Defaults to the current month if no parameters are provided.
-    Logic:
-    1. If start_date and end_date are provided, use them.
-    2. If month and year are provided, use that month.
-    3. If only year is provided, use the entire year.
-    4. Otherwise, default to the current month.
+    - If parameters provided, return (start_date, end_date).
+    - If no parameters AND default_to_current=True, return current month range.
+    - If no parameters AND default_to_current=False, return (None, None).
     """
     today = timezone.now().date()
     start_date_param = request.query_params.get("start_date")
@@ -174,31 +171,37 @@ def get_month_date_range(request):
         except (ValueError, TypeError):
             pass
 
-    # Determine Year (default to current year)
-    try:
-        year = int(year_param) if year_param else today.year
-    except (ValueError, TypeError):
-        year = today.year
+    # Determine if any part of the month/year filter is provided
+    has_year = year_param is not None
+    has_month = month_param is not None
 
-    # 2. Month and Year
-    if month_param:
+    if has_year or has_month:
         try:
-            month = int(month_param)
-            if 1 <= month <= 12:
-                last_day = calendar.monthrange(year, month)[1]
-                start_date = today.replace(year=year, month=month, day=1)
-                end_date = today.replace(year=year, month=month, day=last_day)
-                return start_date, end_date
+            year = int(year_param) if year_param else today.year
         except (ValueError, TypeError):
-            pass
+            year = today.year
 
-    # 3. Only Year
-    if year_param and not month_param:
+        if has_month:
+            try:
+                month = int(month_param)
+                if 1 <= month <= 12:
+                    last_day = calendar.monthrange(year, month)[1]
+                    start_date = today.replace(year=year, month=month, day=1)
+                    end_date = today.replace(year=year, month=month, day=last_day)
+                    return start_date, end_date
+            except (ValueError, TypeError):
+                pass
+
+        # If only year provided
         start_date = today.replace(year=year, month=1, day=1)
         end_date = today.replace(year=year, month=12, day=31)
         return start_date, end_date
 
-    # 4. Default: Current Month
+    # No date parameters provided
+    if not default_to_current:
+        return None, None
+
+    # Default: Current Month
     start_date = today.replace(day=1)
     last_day = calendar.monthrange(today.year, today.month)[1]
     end_date = today.replace(day=last_day)
@@ -304,9 +307,9 @@ class TransactionCreateView(ListCreateAPIView):
         from apps.goals.models import GoalEntry
         from django.db.models import Q
 
-        # 1. Determine Date Range (Default: Current Month)
-        # This solves the requirement: "by default the transactions of the current month"
-        start_date, end_date = get_month_date_range(request)
+        # 1. Determine Date Range (Default: All time for transaction list)
+        # Requirement: "by default now we have to show all transactions done till now"
+        start_date, end_date = get_month_date_range(request, default_to_current=False)
 
         # 2. Extract Other Filters
         category_id = request.query_params.get("category_id")
@@ -317,9 +320,11 @@ class TransactionCreateView(ListCreateAPIView):
         search = request.query_params.get("search")
 
         # 3. Get and Filter Regular Transactions
-        transactions = Transaction.objects.filter(
-            user=self.request.user, date__range=[start_date, end_date]
-        )
+        transactions = Transaction.objects.filter(user=self.request.user)
+
+        # Apply date range ONLY if filter is provided or default set
+        if start_date and end_date:
+            transactions = transactions.filter(date__range=[start_date, end_date])
 
         # Apply additional filters to regular transactions
         if category_id:
@@ -342,9 +347,13 @@ class TransactionCreateView(ListCreateAPIView):
         # Note: Filtering by category_id on Group Transactions only if it's a regular category filter
         group_transactions = GroupTransaction.objects.filter(
             Q(user=self.request.user)
-            & (Q(person__isnull=True) | Q(to_person__isnull=True)),
-            date__range=[start_date, end_date],
+            & (Q(person__isnull=True) | Q(to_person__isnull=True))
         )
+
+        if start_date and end_date:
+            group_transactions = group_transactions.filter(
+                date__range=[start_date, end_date]
+            )
 
         if transaction_type:
             # We filter by display type later, but here we can pre-filter known certainties
@@ -440,9 +449,10 @@ class TransactionCreateView(ListCreateAPIView):
         # 6. Get and Filter Goal Entries
         # Goal entries are always 'expense' types (savings outflow)
         if not transaction_type or transaction_type == "expense":
-            goal_entries = GoalEntry.objects.filter(
-                goal__user=self.request.user, date__range=[start_date, end_date]
-            )
+            goal_entries = GoalEntry.objects.filter(goal__user=self.request.user)
+
+            if start_date and end_date:
+                goal_entries = goal_entries.filter(date__range=[start_date, end_date])
 
             # Apply amount filters
             if min_amount:
@@ -485,8 +495,10 @@ class TransactionCreateView(ListCreateAPIView):
                 "total_income": round(total_income, 2),
                 "total_expenses": round(total_expenses, 2),
                 "balance": round(balance, 2),
-                "filtered_from": start_date.strftime("%Y-%m-%d"),
-                "filtered_to": end_date.strftime("%Y-%m-%d"),
+                "filtered_from": start_date.strftime("%Y-%m-%d")
+                if start_date
+                else "Total",
+                "filtered_to": end_date.strftime("%Y-%m-%d") if end_date else "History",
             },
         }
         return success_response(data=data)
