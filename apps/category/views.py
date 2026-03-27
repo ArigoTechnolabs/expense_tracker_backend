@@ -903,7 +903,7 @@ class EmiCreateView(ListCreateAPIView):
     def get_queryset(self):
         from apps.category.models import Emi
 
-        return Emi.objects.filter(user=self.request.user).order_by("next_due_date")
+        return Emi.objects.filter(user=self.request.user).order_by("start_date")
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

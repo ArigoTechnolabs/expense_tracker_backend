@@ -114,7 +114,9 @@ class EmiSerializer(serializers.ModelSerializer):
             "user",
             "name",
             "amount",
-            "next_due_date",
+            "start_date",
+            "end_date",
+            "due_day",
             "reminder_time",
             "category",
             "is_active",
@@ -129,6 +131,26 @@ class EmiSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+    def validate(self, attrs):
+        from django.utils import timezone
+
+        today = timezone.now().date()
+
+        start_date = attrs.get("start_date")
+        end_date = attrs.get("end_date")
+
+        if start_date and end_date and end_date <= start_date:
+            raise serializers.ValidationError(
+                {"end_date": "End date must be after the start date."}
+            )
+
+        if end_date and end_date < today:
+            raise serializers.ValidationError(
+                {"end_date": "End date cannot be in the past at creation/update."}
+            )
+
+        return attrs
 
     def create(self, validated_data):
         validated_data["user"] = self.context["request"].user
