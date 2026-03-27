@@ -56,7 +56,11 @@ class Emi(BaseModel):
     user = models.ForeignKey("accounts.User", on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    next_due_date = models.DateField(help_text="The next date this EMI is due")
+    start_date = models.DateField(help_text="The date the EMI starts")
+    end_date = models.DateField(help_text="The date the EMI ends")
+    due_day = models.PositiveSmallIntegerField(
+        help_text="The day of the month the EMI is due (1-31)"
+    )
     reminder_time = models.TimeField(help_text="Time of day to send the reminder")
     category = models.ForeignKey(
         Category, on_delete=models.SET_NULL, null=True, blank=True

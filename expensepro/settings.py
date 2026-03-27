@@ -184,6 +184,13 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ==================================================
+# FIREBASE SETTINGS
+# ==================================================
+
+FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS")
+FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON")
+
+# ==================================================
 # DRF SPECTACULAR (Swagger)
 # ==================================================
 
