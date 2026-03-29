@@ -110,8 +110,9 @@ class Command(BaseCommand):
                 )
             )
 
-        today = timezone.now().date()
-        current_time = timezone.now().time()
+        now = timezone.localtime()
+        today = now.date()
+        current_time = now.time()
 
         # Only process active EMIs where today is within the start and end range
         emis = Emi.objects.filter(
