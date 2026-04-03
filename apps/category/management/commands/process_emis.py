@@ -1,141 +1,114 @@
 import datetime
 import os
 import json
+import logging
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.conf import settings
 from apps.category.models import Emi, Transaction, Category
 
+logger = logging.getLogger("emi_logger")
+
 try:
     import firebase_admin
-    from firebase_admin import credentials
-except ImportError:
+    from firebase_admin import credentials, messaging
+except ImportError as e:
     firebase_admin = None
+    logger.error(f"Firebase import error: {e}")
 
 
 def get_due_date_for_month(year, month, day):
-    # Handle month rollover and days that don't exist in all months (like 31st)
     while True:
         try:
             return datetime.date(year, month, day)
         except ValueError:
-            # If day 31 doesn't exist in that month, try 30, then 29...
             day -= 1
 
 
 class Command(BaseCommand):
-    help = "Process EMIs: send reminders and create expense transactions"
+    help = "Process EMIs"
 
     def handle(self, *args, **kwargs):
-        # Initialize Firebase if not already initialized
+
+        # =========================
+        # 🔥 FIREBASE INIT
+        # =========================
         if firebase_admin and not firebase_admin._apps:
             cred = None
 
-            # 1. Try JSON string from ENV
             if settings.FIREBASE_CREDENTIALS_JSON:
                 try:
                     cred_dict = json.loads(settings.FIREBASE_CREDENTIALS_JSON)
                     cred = credentials.Certificate(cred_dict)
-                    self.stdout.write(
-                        self.style.SUCCESS(
-                            "Using Firebase credentials from JSON string."
-                        )
-                    )
+                    logger.debug("Using Firebase JSON")
                 except Exception as e:
-                    self.stdout.write(
-                        self.style.ERROR(f"Failed to load Firebase JSON string: {e}")
-                    )
+                    logger.error(f"JSON error: {e}")
 
-            # 2. Try file path from ENV if JSON string failed
-            if not cred and settings.FIREBASE_CREDENTIALS_PATH:
-                if os.path.exists(settings.FIREBASE_CREDENTIALS_PATH):
+            firebase_path = settings.FIREBASE_CREDENTIALS_PATH
+            logger.debug(f"Firebase path: {firebase_path}")
+
+            if not cred and firebase_path:
+                if os.path.exists(firebase_path):
                     try:
-                        cred = credentials.Certificate(
-                            settings.FIREBASE_CREDENTIALS_PATH
-                        )
-                        self.stdout.write(
-                            self.style.SUCCESS(
-                                f"Using Firebase credentials from file: {settings.FIREBASE_CREDENTIALS_PATH}"
-                            )
-                        )
+                        cred = credentials.Certificate(firebase_path)
+                        logger.debug("Firebase file loaded")
                     except Exception as e:
-                        self.stdout.write(
-                            self.style.ERROR(f"Failed to load Firebase file: {e}")
-                        )
+                        logger.error(f"File error: {e}")
                 else:
-                    self.stdout.write(
-                        self.style.WARNING(
-                            f"Firebase file not found at: {settings.FIREBASE_CREDENTIALS_PATH}"
-                        )
-                    )
-
-            # 3. Fallback to default local path
-            if not cred:
-                default_path = os.path.join(
-                    settings.BASE_DIR, "firebase-credentials.json"
-                )
-                if os.path.exists(default_path):
-                    try:
-                        cred = credentials.Certificate(default_path)
-                        self.stdout.write(
-                            self.style.SUCCESS(
-                                "Using default firebase-credentials.json file."
-                            )
-                        )
-                    except Exception as e:
-                        self.stdout.write(
-                            self.style.ERROR(
-                                f"Failed to load default Firebase file: {e}"
-                            )
-                        )
+                    logger.error("Firebase file NOT found")
 
             if cred:
                 try:
                     firebase_admin.initialize_app(cred)
+                    logger.debug("Firebase initialized")
                 except Exception as e:
-                    self.stdout.write(
-                        self.style.ERROR(f"Failed to initialize Firebase app: {e}")
-                    )
+                    logger.error(f"Init error: {e}")
             else:
-                self.stdout.write(
-                    self.style.WARNING(
-                        "No Firebase credentials provided. Notifications disabled."
-                    )
-                )
-
-        elif not firebase_admin:
-            self.stdout.write(
-                self.style.WARNING(
-                    "firebase-admin package not installed. Notifications disabled."
-                )
-            )
+                logger.error("No Firebase credentials")
 
         now = timezone.localtime()
         today = now.date()
         current_time = now.time()
 
-        # Only process active EMIs where today is within the start and end range
         emis = Emi.objects.filter(
-            is_active=True, start_date__lte=today, end_date__gte=today
+            is_active=True,
+            start_date__lte=today,
+            end_date__gte=today
         )
 
         for emi in emis:
-            # Construct the due date for the CURRENT month
+
+            if not emi.due_day:
+                logger.debug(f"Skipping EMI (no due_day): {emi.name}")
+                continue
+
             current_due_date = get_due_date_for_month(
                 today.year, today.month, emi.due_day
             )
 
             days_until_due = (current_due_date - today).days
 
-            # 1. Check if DUE TODAY or PAST DUE for this month
+            logger.debug(f"EMI: {emi.name} | Days until due: {days_until_due}")
+
+            # =========================
+            # ✅ DUE TODAY OR PAST
+            # =========================
             if current_due_date <= today:
+
+                # 🔥 FIX: prevent 12 AM notification
+                if emi.reminder_time and current_time < emi.reminder_time:
+                    logger.debug("Skipping due notification before reminder_time")
+                    continue
+
                 last_processed = emi.last_processed_date
-                # If not processed this month yet
+
                 if not last_processed or (
                     last_processed.year != today.year
                     or last_processed.month != today.month
                 ):
-                    # Create Expense Transaction
+
+                    # ✅ CREATE TRANSACTION
                     cat = emi.category
                     if not cat:
                         cat, _ = Category.objects.get_or_create(
@@ -148,57 +121,66 @@ class Command(BaseCommand):
                         category=cat,
                         amount=emi.amount,
                         date=today,
-                        note=f"Auto-generated EMI expense for {emi.name}",
+                        note=f"Auto EMI: {emi.name}",
                     )
 
-                    # Send Notification
+                    logger.debug("Transaction created")
+
+                    # ✅ SEND NOTIFICATION
                     self.send_notification(
                         emi.user,
-                        "EMI Due Today",
-                        f"Your EMI '{emi.name}' of amount {emi.amount} is due today and has been recorded as an expense.",
+                        "EMI Due",
+                        f"{emi.name} of ₹{emi.amount} is due.",
                     )
 
-                    # Update last_processed_date
                     emi.last_processed_date = today
                     emi.save()
 
-            # 2. Check if Reminder is needed (1 or 2 days prior)
+            # =========================
+            # 🔔 REMINDER
+            # =========================
             elif days_until_due in [1, 2]:
-                if emi.last_notified_date != today:
-                    # Check if reminder time has passed or arrived
-                    if current_time >= emi.reminder_time:
+
+                if not emi.last_notified_date or emi.last_notified_date < today:
+
+                    if emi.reminder_time and current_time >= emi.reminder_time:
+
+                        logger.debug("Sending reminder")
+
                         self.send_notification(
                             emi.user,
-                            "Upcoming EMI Reminder",
-                            f"Your EMI '{emi.name}' of amount {emi.amount} is due in {days_until_due} day(s).",
+                            "EMI Reminder",
+                            f"{emi.name} due in {days_until_due} day(s)",
                         )
+
                         emi.last_notified_date = today
                         emi.save()
 
-        self.stdout.write(self.style.SUCCESS("Successfully processed all EMIs"))
+        logger.debug("EMI processing completed")
 
     def send_notification(self, user, title, body):
+
+        logger.debug(f"User: {user.id}, Token: {user.device_token}")
+
         if not firebase_admin or not firebase_admin._apps:
-            return  # Firebase not configured
+            logger.error("Firebase not initialized")
+            return
 
-        if getattr(user, "device_token", None):
-            try:
-                from firebase_admin import messaging
+        if not getattr(user, "device_token", None):
+            logger.error(f"No token for user {user.id}")
+            return
 
-                message = messaging.Message(
-                    notification=messaging.Notification(
-                        title=title,
-                        body=body,
-                    ),
-                    token=user.device_token,
-                )
-                response = messaging.send(message)
-                self.stdout.write(
-                    self.style.SUCCESS(
-                        f"Successfully sent message to {user.email}: {response}"
-                    )
-                )
-            except Exception as e:
-                self.stdout.write(
-                    self.style.ERROR(f"Error sending message to {user.email}: {e}")
-                )
+        try:
+            message = messaging.Message(
+                notification=messaging.Notification(
+                    title=title,
+                    body=body,
+                ),
+                token=user.device_token,
+            )
+
+            response = messaging.send(message)
+            logger.debug(f"Notification sent: {response}")
+
+        except Exception as e:
+            logger.error(f"Notification error: {e}")
