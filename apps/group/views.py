@@ -2,6 +2,7 @@ from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIV
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema
+from django.db import IntegrityError
 
 from apps.group.models import Group, Person, GroupTransaction
 from apps.group.serializers import (
@@ -32,8 +33,12 @@ class GroupCreateListView(ListCreateAPIView):
             msg = first_error_message(serializer.errors)
             return error_response(message=msg)
 
-        group = serializer.save()
-
+        try:
+            group = serializer.save()
+        except IntegrityError as e:
+            if "Duplicate entry" in str(e):
+                return error_response(message="Group with this name already exists.")
+            return error_response(message="Failed to create group.")
         return success_response(
             message="Group created successfully",
             data=GroupCreateSerializer(group, context={"request": request}).data,
@@ -99,9 +104,13 @@ class GroupRetrieveView(APIView):
             msg = first_error_message(serializer.errors)
             return error_response(message=msg)
 
-        group = serializer.save()
+        try:
+            group = serializer.save()
+        except IntegrityError as e:
+            if "Duplicate entry" in str(e):
+                return error_response(message="Group with this name already exists.")
+            return error_response(message="Failed to update group.")
 
-        # Re-use GET logic or return a simple success, returning the new group data with URL
         return success_response(
             message="Group updated successfully",
             data=GroupCreateSerializer(group, context={"request": request}).data,
