@@ -126,6 +126,7 @@ class GroupTransactionSerializer(serializers.ModelSerializer):
             "split_between",
             "split_between_names",
             "include_owner",
+            "goal_entry",
             "created_at",
             "updated_at",
         )
