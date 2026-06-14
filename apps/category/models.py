@@ -1,6 +1,7 @@
 from django.db import models
 
 from apps.common.models import BaseModel
+from django.utils import timezone
 
 
 class Category(BaseModel):
@@ -56,10 +57,12 @@ class Emi(BaseModel):
     user = models.ForeignKey("accounts.User", on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    start_date = models.DateField(help_text="The date the EMI starts")
-    end_date = models.DateField(help_text="The date the EMI ends")
+    start_date = models.DateField(
+        default=timezone.now, help_text="The date the EMI starts"
+    )
+    end_date = models.DateField(default=timezone.now, help_text="The date the EMI ends")
     due_day = models.PositiveSmallIntegerField(
-        help_text="The day of the month the EMI is due (1-31)"
+        default=1, help_text="The day of the month the EMI is due (1-31)"
     )
     reminder_time = models.TimeField(help_text="Time of day to send the reminder")
     category = models.ForeignKey(
