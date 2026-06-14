@@ -47,13 +47,6 @@ class Person(BaseModel):
 
 
 class GroupTransaction(BaseModel):
-    goal_entry = models.ForeignKey(
-        "goals.GoalEntry",
-        null=True,
-        blank=True,
-        on_delete=models.CASCADE,
-        related_name="group_transactions",
-    )
     """
     Transactions within a group where one person pays and it's split among group members.
     Similar to regular transactions but linked to a group and person.
