@@ -398,6 +398,11 @@ class GroupTransactionRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):
         except GroupTransaction.DoesNotExist:
             return error_response(message="Transaction not found")
 
+        # Delete the group transaction
         transaction.delete()
+        # Delete any GoalEntry with the same primary key (if any)
+        from apps.goals.models import GoalEntry
+
+        GoalEntry.objects.filter(id=transaction.id).delete()
 
         return success_response(message="Transaction deleted successfully")
