@@ -507,6 +507,7 @@ class TransactionCreateView(ListCreateAPIView):
 class TransactionRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update, or delete a transaction.
+    To delete a goal entry, pass ?is_goal_entry=true with the goal entry's id.
     """
 
     permission_classes = [IsAuthenticated]
@@ -516,6 +517,16 @@ class TransactionRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):
         return Transaction.objects.filter(user=self.request.user)
 
     lookup_field = "id"
+
+    def get_object(self):
+        # Skip the default Transaction lookup when deleting a goal entry —
+        # the id refers to a GoalEntry, not a Transaction.
+        is_goal_entry = (
+            self.request.query_params.get("is_goal_entry", "").lower() == "true"
+        )
+        if self.request.method == "DELETE" and is_goal_entry:
+            return None  # handled entirely in destroy()
+        return super().get_object()
 
     def retrieve(self, request, *args, **kwargs):
         transaction = self.get_object()
@@ -542,10 +553,52 @@ class TransactionRetrieveUpdateDeleteView(RetrieveUpdateDestroyAPIView):
         )
 
     def destroy(self, request, *args, **kwargs):
+        from apps.goals.models import GoalEntry
+
+        is_goal_entry = request.query_params.get("is_goal_entry", "").lower() == "true"
+        if is_goal_entry:
+            entry_id = kwargs.get("id")
+            try:
+                entry = GoalEntry.objects.get(id=entry_id, goal__user=request.user)
+            except GoalEntry.DoesNotExist:
+                return error_response(message="Goal entry not found", status=404)
+            entry.delete()
+            return success_response(message="Goal entry deleted successfully")
+
         transaction = self.get_object()
         transaction.delete()
 
         return success_response(message="Transaction deleted successfully")
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                description="ID of the transaction or goal entry to delete.",
+                required=True,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            ),
+            OpenApiParameter(
+                name="is_goal_entry",
+                description=(
+                    "Set to 'true' to delete a goal entry instead of a regular transaction. "
+                    "The {id} in the path must be the goal entry's id."
+                ),
+                required=False,
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        description=(
+            "Delete a transaction by id. "
+            "To delete a goal entry shown in the transaction list, "
+            "pass ?is_goal_entry=true — the id should be the goal entry's id."
+        ),
+        responses={200: None},
+    )
+    def delete(self, request, *args, **kwargs):
+        return self.destroy(request, *args, **kwargs)
 
 
 class FinancialSummaryView(APIView):
